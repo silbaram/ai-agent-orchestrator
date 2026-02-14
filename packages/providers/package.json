@@ -1,0 +1,15 @@
+{
+  "name": "@adt/providers",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-package.mjs packages/providers",
+    "test": "node --test --experimental-strip-types test/index.test.ts",
+    "lint": "node ../../scripts/run-eslint.mjs packages/providers/src packages/providers/test"
+  }
+}

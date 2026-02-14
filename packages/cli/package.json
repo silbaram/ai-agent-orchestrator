@@ -1,0 +1,19 @@
+{
+  "name": "@adt/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "aao": "dist/index.js",
+    "adt": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "node ../../scripts/build-package.mjs packages/cli",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "lint": "node ../../scripts/run-eslint.mjs packages/cli/src packages/cli/test"
+  }
+}

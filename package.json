@@ -1,0 +1,28 @@
+{
+  "name": "ai-agent-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Artifact-first workflow orchestrator for AI coding agents",
+  "packageManager": "pnpm@10.6.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "npm run --workspaces --if-present build",
+    "test": "npm run --workspaces --if-present test",
+    "lint": "npm run --workspaces --if-present lint",
+    "format": "node ./scripts/run-prettier.mjs --check .",
+    "format:write": "node ./scripts/run-prettier.mjs --write ."
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.24.0",
+    "@typescript-eslint/parser": "^8.24.0",
+    "eslint": "^9.21.0",
+    "prettier": "^3.5.2",
+    "typescript": "^5.8.2",
+    "vitest": "^2.1.8"
+  }
+}
