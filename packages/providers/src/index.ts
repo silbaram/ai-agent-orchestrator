@@ -1,4 +1,12 @@
 export {
+  ClaudeCliProvider,
+  ClaudeCliProviderError,
+  buildClaudeExecCommand,
+  type ClaudeCliProviderCommand,
+  type ClaudeCliProviderOptions,
+  type ClaudeCommandRunner
+} from './claude-cli-provider.ts';
+export {
   CodexCliProvider,
   CodexCliProviderError,
   buildCodexExecCommand,
@@ -7,6 +15,14 @@ export {
   type CodexCliProviderCommand,
   type CodexCliProviderOptions
 } from './codex-cli-provider.ts';
+export {
+  GeminiCliProvider,
+  GeminiCliProviderError,
+  buildGeminiExecCommand,
+  type GeminiCliProviderCommand,
+  type GeminiCliProviderOptions,
+  type GeminiCommandRunner
+} from './gemini-cli-provider.ts';
 export {
   ProviderRegistry,
   createProviderFromSelection,
@@ -19,6 +35,7 @@ export {
 export {
   parseProviderIdFromRoutingYaml,
   parseRoutingYaml,
+  resolveProviderForRoleFromRoutingYaml,
   parseDefaultWorkflowFromRoutingYaml,
   resolveProviderForRole,
   type RoutingConfig

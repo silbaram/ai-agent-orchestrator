@@ -4,11 +4,14 @@ import test from 'node:test';
 
 import {
   buildCodexExecCommand,
+  buildClaudeExecCommand,
+  buildGeminiExecCommand,
   createProviderFromSelection,
   createProviderRegistry,
   parseDefaultWorkflowFromRoutingYaml,
   parseRoutingYaml,
   resolveProviderForRole,
+  resolveProviderForRoleFromRoutingYaml,
   parseProviderIdFromRoutingYaml,
   resolveProviderId
 } from '../src/index.ts';
@@ -57,6 +60,47 @@ test('buildCodexExecCommand는 sandbox/approval 옵션을 인자로 포함한다
   ]);
 });
 
+test('buildGeminiExecCommand는 -p 프롬프트 모드로 통합 입력을 구성한다.', () => {
+  const command = buildGeminiExecCommand(
+    {
+      systemPrompt: 'sys',
+      userPrompt: 'user',
+      workspaceDir: '/tmp/workspace-root'
+    },
+    {
+      geminiBinary: 'gemini-cli-custom',
+      workspaceRoot: '/tmp/g-root',
+      extraArgs: ['--max-tokens', '1024']
+    }
+  );
+
+  assert.equal(command.command, 'gemini-cli-custom');
+  assert.deepEqual(command.args, [
+    '-p',
+    '[SYSTEM]\nsys\n\n[USER]\nuser',
+    '--max-tokens',
+    '1024'
+  ]);
+  assert.equal(command.cwd, path.resolve('/tmp/g-root'));
+});
+
+test('buildClaudeExecCommand는 -p 프롬프트 모드로 통합 입력을 구성한다.', () => {
+  const command = buildClaudeExecCommand(
+    {
+      systemPrompt: 's',
+      userPrompt: 'u',
+      workspaceDir: '/tmp/workspace-root'
+    },
+    {
+      claudeBinary: 'claude-cli-custom'
+    }
+  );
+
+  assert.equal(command.command, 'claude-cli-custom');
+  assert.deepEqual(command.args, ['-p', '[SYSTEM]\ns\n\n[USER]\nu']);
+  assert.equal(command.cwd, path.resolve('/tmp/workspace-root'));
+});
+
 test('parseProviderIdFromRoutingYaml은 provider 키를 읽는다.', () => {
   const providerId = parseProviderIdFromRoutingYaml(
     ['default_workflow: refactor', 'provider: "codex-cli"', 'roles:', '  planner: planner'].join(
@@ -74,7 +118,7 @@ test('registry/factory는 routing 설정으로 provider를 선택한다.', () =>
   });
 
   assert.equal(provider.id, 'codex-cli');
-  assert.deepEqual(registry.list(), ['claude', 'codex-cli', 'gemini']);
+  assert.deepEqual(registry.list(), ['claude', 'claude-cli', 'codex-cli', 'gemini', 'gemini-cli']);
 });
 
 test('resolveProviderId는 fallback을 처리한다.', () => {
@@ -116,4 +160,14 @@ test('resolveProviderForRole는 role 매핑을 사용해 provider를 선택한�
 
   assert.equal(resolveProviderForRole(config, 'planner'), 'claude');
   assert.equal(resolveProviderForRole(config, 'unknown', 'codex-cli'), 'codex-cli');
+});
+
+test('resolveProviderForRoleFromRoutingYaml는 role별 provider를 선택한다.', () => {
+  const providerId = resolveProviderForRoleFromRoutingYaml(
+    ['roles:', '  planner: claude', '  developer: gemini'].join('\n'),
+    'developer',
+    'codex-cli'
+  );
+
+  assert.equal(providerId, 'gemini');
 });

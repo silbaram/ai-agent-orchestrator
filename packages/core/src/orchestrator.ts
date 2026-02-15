@@ -254,70 +254,86 @@ export class Orchestrator {
         artifacts.push(rawRecord);
         addArtifactToState(state, phase.id, rawRecord.relativePath);
 
-        const plannerArtifacts = await processPlannerPhaseArtifacts({
-          phase,
-          iteration,
-          outputText: output.text,
-          artifactStore
-        });
-        for (const artifact of plannerArtifacts) {
-          artifacts.push(artifact);
-          addArtifactToState(state, phase.id, artifact.relativePath);
-        }
-
         let phaseOutputText = output.text;
         let nextPhaseOverride: string | undefined;
         let cancelRequestedByGatekeeper = false;
+        let managerOutputRecord: ArtifactRecord | null = null;
 
-        const patchFirstArtifacts = await processPatchFirstPhase({
-          phase,
-          iteration,
-          outputText: output.text,
-          workspaceDir: input.workspaceDir,
-          artifactStore,
-          logger
-        });
-
-        for (const artifact of patchFirstArtifacts) {
-          artifacts.push(artifact);
-          addArtifactToState(state, phase.id, artifact.relativePath);
-        }
-
-        if (this.gatekeeper && isPatchFirstRole(phase.role)) {
-          const gatekeeperResult = await handleGatekeeperAfterPatch({
-            gatekeeper: this.gatekeeper,
-            workflowName: workflow.name,
-            phase,
-            request: input.request,
-            iteration,
-            state,
-            stateStore,
-            artifactStore,
-            logger,
-            approvalHandler: this.approvalHandler,
-            checkCommandIds: this.checkCommandIds,
-            maxAutoFixRetries: this.maxAutoFixRetries,
-            fixPhaseId,
-            evaluatePhaseId
+        if (isManagerRole(phase.role)) {
+          const managerUpdate = formatManagerUserUpdate(output.text);
+          managerOutputRecord = await artifactStore.write({
+            phase: phase.id,
+            name: `${formatIteration(iteration)}.manager-update.md`,
+            content: managerUpdate
           });
-
-          for (const artifact of gatekeeperResult.artifacts) {
+          phaseOutputText = managerUpdate;
+        } else {
+          const plannerArtifacts = await processPlannerPhaseArtifacts({
+            phase,
+            iteration,
+            outputText: output.text,
+            artifactStore
+          });
+          for (const artifact of plannerArtifacts) {
             artifacts.push(artifact);
             addArtifactToState(state, phase.id, artifact.relativePath);
           }
 
-          if (gatekeeperResult.evaluatorFeedback) {
-            phaseOutputText = `${phaseOutputText}\n\n${gatekeeperResult.evaluatorFeedback}`;
+          const patchFirstArtifacts = await processPatchFirstPhase({
+            phase,
+            iteration,
+            outputText: output.text,
+            workspaceDir: input.workspaceDir,
+            artifactStore,
+            logger
+          });
 
-            if (evaluatePhaseId) {
-              outputs.set(evaluatePhaseId, gatekeeperResult.evaluatorFeedback);
-            }
-
-            latestOutput = gatekeeperResult.evaluatorFeedback;
+          for (const artifact of patchFirstArtifacts) {
+            artifacts.push(artifact);
+            addArtifactToState(state, phase.id, artifact.relativePath);
           }
 
-          nextPhaseOverride = gatekeeperResult.nextPhaseId;
-          cancelRequestedByGatekeeper = gatekeeperResult.cancelRun;
+          if (this.gatekeeper && isPatchFirstRole(phase.role)) {
+            const gatekeeperResult = await handleGatekeeperAfterPatch({
+              gatekeeper: this.gatekeeper,
+              workflowName: workflow.name,
+              phase,
+              request: input.request,
+              iteration,
+              state,
+              stateStore,
+              artifactStore,
+              logger,
+              approvalHandler: this.approvalHandler,
+              checkCommandIds: this.checkCommandIds,
+              maxAutoFixRetries: this.maxAutoFixRetries,
+              fixPhaseId,
+              evaluatePhaseId
+            });
+
+            for (const artifact of gatekeeperResult.artifacts) {
+              artifacts.push(artifact);
+              addArtifactToState(state, phase.id, artifact.relativePath);
+            }
+
+            if (gatekeeperResult.evaluatorFeedback) {
+              phaseOutputText = `${phaseOutputText}\n\n${gatekeeperResult.evaluatorFeedback}`;
+
+              if (evaluatePhaseId) {
+                outputs.set(evaluatePhaseId, gatekeeperResult.evaluatorFeedback);
+              }
+
+              latestOutput = gatekeeperResult.evaluatorFeedback;
+            }
+
+            nextPhaseOverride = gatekeeperResult.nextPhaseId;
+            cancelRequestedByGatekeeper = gatekeeperResult.cancelRun;
+          }
+        }
+
+        if (managerOutputRecord) {
+          artifacts.push(managerOutputRecord);
+          addArtifactToState(state, phase.id, managerOutputRecord.relativePath);
         }
 
         outputs.set(phase.id, phaseOutputText);
@@ -903,6 +919,53 @@ function formatIteration(iteration: number): string {
 
 function isPatchFirstRole(role: string): boolean {
   return PATCH_FIRST_ROLES.has(role.trim().toLowerCase());
+}
+
+function isManagerRole(role: string): boolean {
+  return role.trim().toLowerCase() === 'manager';
+}
+
+function formatManagerUserUpdate(outputText: string): string {
+  const normalized = outputText.trim();
+
+  if (isManagerUserUpdateFormat(normalized)) {
+    return normalized;
+  }
+
+  const fallback = normalized || '요청된 작업에 대한 사용자 안내입니다.';
+  const tldr = fallback
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line !== '') ?? '요약 없음';
+
+  return [
+    '# USER_UPDATE',
+    '## TL;DR',
+    tldr,
+    '',
+    '## What changed',
+    fallback,
+    '',
+    '## Risks',
+    '- 특이한 리스크 없음',
+    '',
+    '## Actions needed (Y/n 또는 선택지)',
+    '- Y',
+    '',
+    '## Next',
+    '- 다음 단계 진행'
+  ].join('\n');
+}
+
+function isManagerUserUpdateFormat(outputText: string): boolean {
+  return (
+    /^#\s*USER_UPDATE\b/im.test(outputText) &&
+    /^##\s*TL;DR\b/im.test(outputText) &&
+    /^##\s*What changed\b/im.test(outputText) &&
+    /^##\s*Risks\b/im.test(outputText) &&
+    /^##\s*Actions needed\b/im.test(outputText) &&
+    /^##\s*Next\b/im.test(outputText)
+  );
 }
 
 function isPlanPhase(phase: LlmWorkflowPhase): boolean {

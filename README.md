@@ -10,8 +10,9 @@
   - `adt/aao init` 워크스페이스 생성
   - `adt/aao manager refactor "<요청>"` 워크플로 실행
   - `adt/aao manager feature-order-page "<요청>"` 워크플로 추가
-  - Provider 어댑터(`codex-cli`), patch 추출/적용, Gatekeeper 검사/승인/auto-fix
-  - 역할별 provider 분업 (`manager/gemini`, `planner/codex-cli`, `developer/claude`, `evaluator/codex-cli`, `fixer/codex-cli`, `reviewer/codex-cli`)
+  - `adt/aao manager feature "<요청>"` 워크플로 템플릿 추가
+  - Provider 어댑터(`codex-cli`, `gemini-cli`, `claude-cli`), patch 추출/적용, Gatekeeper 검사/승인/auto-fix
+  - 역할별 provider 분업 (`manager/gemini-cli`, `planner/codex-cli`, `developer/claude-cli`, `evaluator/codex-cli`, `fixer/codex-cli`, `reviewer/codex-cli`)
   - TUI 런너(`adt-tui`) 및 회귀 테스트 픽스처
   - `summary.md` 실행 요약 생성 및 phase별 아티팩트 정리
 - 미구현/제약:
@@ -24,7 +25,7 @@
 - Node.js `>= 22`
 - `pnpm` workspace 환경 권장
 - `git` 설치 필요 (patch 적용/변경 분석)
-- 실제 LLM 실행 시 `codex` CLI 설치 필요 (`codex-cli` provider 사용 시)
+- 실제 LLM 실행 시 CLI 설치 필요 (`codex-cli`, `gemini-cli`, `claude-cli` provider 사용 시)
 
 ## 개발 명령어
 
@@ -62,18 +63,26 @@ node packages/cli/dist/index.js init
 3) refactor 워크플로 실행
 
 ```bash
-node packages/cli/dist/index.js manager refactor "함수 분리 및 네이밍 개선"
+node packages/cli/dist/index.js manager refactor "<요청 내용>"
 ```
 
 `manager refactor`는 기본적으로 `ai-dev-team/config/workflows/refactor.yaml`을 읽고, run 결과를 `.runs/workflows/<run-id>/`에 기록한다.
 
-3-1) 주문 페이지 feature 워크플로 실행
+3-1) feature-order-page 템플릿 워크플로 실행
 
 ```bash
-node packages/cli/dist/index.js manager feature-order-page "주문 페이지 API 화면 구현"
+node packages/cli/dist/index.js manager feature-order-page "<요청 내용>"
 ```
 
 `manager feature-order-page`는 `ai-dev-team/config/workflows/feature-order-page.yaml`을 읽고, 동일한 run 결과 저장 구조를 사용한다.
+
+3-2) feature 워크플로 실행
+
+```bash
+node packages/cli/dist/index.js manager feature "<요청 내용>"
+```
+
+`manager feature`는 `ai-dev-team/config/workflows/feature.yaml`을 읽고, 승인 후 implement/evaluate/review까지 진행한다.
 
 ## CLI 명령
 
@@ -81,8 +90,10 @@ node packages/cli/dist/index.js manager feature-order-page "주문 페이지 API
   - 현재 디렉토리에 `ai-dev-team` 워크스페이스 템플릿 생성
 - `manager refactor "<요청>"`
   - workflow 실행 + 승인 단계(`y/N`) 처리
+- `manager feature "<요청>"`
+  - feature workflow 실행 + 승인 단계(`y/N`) 처리
 - `manager feature-order-page "<요청>"`
-  - 주문 페이지 feature workflow 실행 + 승인 단계(`y/N`) 처리
+  - 기능 템플릿 feature workflow 실행 + 승인 단계(`y/N`) 처리
 - `run`
   - 다음 단계 구현 예정 (현재 메시지 출력만 수행)
 
@@ -104,7 +115,8 @@ ai-dev-team/
    ├─ tools.yaml
    └─ workflows/
       ├─ refactor.yaml
-      └─ feature-order-page.yaml
+      ├─ feature-order-page.yaml
+      └─ feature.yaml
 ```
 
 설정 요약:
@@ -112,9 +124,9 @@ ai-dev-team/
 - `config/routing.yaml`
   - 기본 provider 선택 (`provider: codex-cli`)
   - 기본 역할별 provider 매핑:
-    - `manager: gemini`
+    - `manager: gemini-cli`
     - `planner: codex-cli`
-    - `developer: claude`
+    - `developer: claude-cli`
     - `evaluator: codex-cli`
     - `fixer: codex-cli`
     - `reviewer: codex-cli`
@@ -164,63 +176,6 @@ ai-dev-team/
    └─ tool-runtime.log
 ```
 
-### summary.md 예시
-
-```text
-# AAO 실행 요약
-- workflow: refactor
-- request: 주문 기능 리팩터 요청
-- status: completed
-- current_phase: none
-
-## 실행 phase
-- 1. plan
-- 2. manager_plan_report
-- 3. approve
-- 4. implement
-- 5. evaluate
-- 6. manager_review_report
-- 7. review
-
-## phase 상태
-| phase | status |
-| --- | --- |
-| plan | completed |
-| manager_plan_report | completed |
-| approve | completed |
-| implement | completed |
-| evaluate | completed |
-| manager_review_report | completed |
-| review | completed |
-
-## phase별 아티팩트
-| plan | completed |
-  - plan/iter-0001.raw.txt
-  - plan/iter-0001.plan.md
-| manager_plan_report | completed |
-  - manager_plan_report/iter-0001.raw.txt
-| approve | completed |
-  - approve/iter-0001.approval.txt
-| implement | completed |
-  - implement/iter-0001.raw.txt
-  - implement/iter-0001.patch
-| evaluate | completed |
-  - evaluate/iter-0001.raw.txt
-  - evaluate/iter-0001.patch
-| manager_review_report | completed |
-  - manager_review_report/iter-0001.raw.txt
-| review | completed |
-  - review/iter-0001.raw.txt
-...
-
-## 위치
-- runDir: /.../.runs/workflows/refactor-2025021509400000-abcdef
-- current-run: /.../.runs/workflows/refactor-2025021509400000-abcdef/current-run.json
-- log: /.../.runs/workflows/refactor-2025021509400000-abcdef/logs
-- artifacts: /.../.runs/workflows/refactor-2025021509400000-abcdef/artifacts
-총 아티팩트 개수: 9개
-```
-
 ### 최근 요약 포맷 정리
 
 - `실행 phase`: 순차 실행 단계 표시
@@ -244,9 +199,34 @@ TUI에서 확인 가능한 항목:
 ## 패키지 구성
 
 - `packages/core`: Orchestrator, Workflow 파서, Artifact/State/Log 저장소, Patch-first, Gatekeeper, CommandRunner
-- `packages/providers`: Provider registry + `codex-cli` adapter
-- `packages/cli`: `init`, `manager refactor`, `manager feature-order-page` 명령
+- `packages/providers`: Provider registry + `codex-cli`, `gemini-cli`, `claude-cli` adapter
+
+- `packages/cli`: `init`, `manager refactor`, `manager feature`, `manager feature-order-page` 명령
 - `packages/tui`: 텍스트 기반 런 모니터링/승인 UI
+
+## Provider 설정
+
+기본 설정(`ai-dev-team/config/routing.yaml`)에서 role별 provider를 아래 형태로 지정한다.
+
+```yaml
+provider: codex-cli
+roles:
+  manager: gemini-cli
+  planner: codex-cli
+  developer: claude-cli
+  evaluator: codex-cli
+  fixer: codex-cli
+  reviewer: codex-cli
+```
+
+## Provider 실행 규칙
+
+`routing.yaml`의 `roles`는 `role -> provider-id` 매핑을 그대로 반영한다.  
+허용 가능한 provider-id는 `codex-cli`, `gemini-cli`, `claude-cli`이다.
+(`gemini`, `claude`도 하위 호환으로 허용)
+
+CLI 등록된 provider id는 다음을 사용합니다: `codex-cli`, `gemini-cli`, `claude-cli`.
+(호환성 차원에서 `gemini`, `claude`도 내부적으로 허용됩니다.)
 
 ## 관련 문서
 

@@ -1,12 +1,16 @@
 import type { Provider } from '../../core/src/index.ts';
 
+import { ClaudeCliProvider, type ClaudeCliProviderOptions } from './claude-cli-provider.ts';
 import { CodexCliProvider, type CodexCliProviderOptions } from './codex-cli-provider.ts';
+import { GeminiCliProvider, type GeminiCliProviderOptions } from './gemini-cli-provider.ts';
 import { parseProviderIdFromRoutingYaml } from './routing.ts';
 
 export type ProviderFactory = () => Provider;
 
 export interface CreateProviderRegistryOptions {
   codexCli?: CodexCliProviderOptions;
+  geminiCli?: GeminiCliProviderOptions;
+  claudeCli?: ClaudeCliProviderOptions;
 }
 
 export interface ProviderSelectionOptions {
@@ -47,8 +51,10 @@ export function createProviderRegistry(
   const registry = new ProviderRegistry();
 
   registry.register('codex-cli', () => new CodexCliProvider(options.codexCli));
-  registry.register('claude', () => new CodexCliProvider(options.codexCli));
-  registry.register('gemini', () => new CodexCliProvider(options.codexCli));
+  registry.register('claude', () => new ClaudeCliProvider(options.claudeCli));
+  registry.register('claude-cli', () => new ClaudeCliProvider(options.claudeCli));
+  registry.register('gemini', () => new GeminiCliProvider(options.geminiCli));
+  registry.register('gemini-cli', () => new GeminiCliProvider(options.geminiCli));
 
   return registry;
 }
