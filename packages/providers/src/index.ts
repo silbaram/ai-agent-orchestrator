@@ -16,4 +16,10 @@ export {
   type ProviderFactory,
   type ProviderSelectionOptions
 } from './registry.ts';
-export { parseProviderIdFromRoutingYaml } from './routing.ts';
+export {
+  parseProviderIdFromRoutingYaml,
+  parseRoutingYaml,
+  parseDefaultWorkflowFromRoutingYaml,
+  resolveProviderForRole,
+  type RoutingConfig
+} from './routing.ts';

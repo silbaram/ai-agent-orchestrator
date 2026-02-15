@@ -38,6 +38,7 @@ export interface OrchestratorRunInput {
   workspaceDir: string;
   request: string;
   defaultProviderId?: string;
+  roleProviderMap?: Record<string, string>;
 }
 
 export interface OrchestratorRunResult {
@@ -196,7 +197,10 @@ export class Orchestrator {
           continue;
         }
 
-        const providerId = phase.provider?.trim() || input.defaultProviderId?.trim();
+        const providerId =
+          phase.provider?.trim() ||
+          resolveProviderFromRole(input.roleProviderMap, phase.role) ||
+          input.defaultProviderId?.trim();
         if (!providerId) {
           throw new Error(`phase(${phase.id})의 provider를 결정할 수 없습니다.`);
         }
@@ -903,6 +907,18 @@ function isPatchFirstRole(role: string): boolean {
 
 function isPlanPhase(phase: LlmWorkflowPhase): boolean {
   return phase.id.trim().toLowerCase() === 'plan' && phase.role.trim().toLowerCase() === 'planner';
+}
+
+function resolveProviderFromRole(
+  roleProviderMap: Record<string, string> | undefined,
+  role: string
+): string | undefined {
+  if (!roleProviderMap) {
+    return undefined;
+  }
+
+  const providerId = roleProviderMap[role.trim().toLowerCase()];
+  return providerId?.trim();
 }
 
 function findPhaseIdByRole(phases: WorkflowPhase[], role: string): string | undefined {

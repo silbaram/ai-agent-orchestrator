@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { createInterface } from 'node:readline/promises';
@@ -47,6 +47,11 @@ export interface OrchestratorRunResult {
   workflowName: string;
   state: {
     status: string;
+    current_phase: string | null;
+    phases: Array<{
+      id: string;
+      status: string;
+    }>;
   };
   executedPhases: string[];
   artifacts: Array<{
@@ -74,6 +79,7 @@ export interface ManagerRefactorResult {
   runId: string;
   runDir: string;
   summary: OrchestratorRunResult;
+  summaryPath: string;
 }
 
 export interface ManagerRunCreatedEvent {
@@ -88,12 +94,28 @@ export function registerManagerCommand(program: Command, dependencies: ManagerCo
     .command('refactor')
     .description('refactor workflow를 실행한다.')
     .action(async (args) => {
-      const request = parseRefactorRequest(args);
+      const request = parseManagerRequest(args);
       await runManagerRefactor(request, dependencies);
+    });
+
+  manager
+    .command('feature-order-page')
+    .description('주문 페이지 기능 workflow를 실행한다.')
+    .action(async (args) => {
+      const request = parseManagerRequest(args);
+      await runManagerWorkflow('feature-order-page', request, dependencies);
     });
 }
 
 export async function runManagerRefactor(
+  request: string,
+  dependencies: ManagerCommandDependencies = {}
+): Promise<ManagerRefactorResult> {
+  return runManagerWorkflow('refactor', request, dependencies);
+}
+
+export async function runManagerWorkflow(
+  workflowName: string,
   request: string,
   dependencies: ManagerCommandDependencies = {}
 ): Promise<ManagerRefactorResult> {
@@ -106,10 +128,10 @@ export async function runManagerRefactor(
 
   const rootDir = cwd();
   const workspacePath = path.resolve(rootDir, 'ai-dev-team');
-  const workflowPath = path.resolve(workspacePath, 'config', 'workflows', 'refactor.yaml');
+  const workflowPath = path.resolve(workspacePath, 'config', 'workflows', `${workflowName}.yaml`);
 
   const runRootDir = path.resolve(rootDir, '.runs', 'workflows');
-  const runId = createRunId('refactor', now);
+  const runId = createRunId(workflowName, now);
   const runDir = path.resolve(runRootDir, runId);
 
   await mkdir(runDir, { recursive: true });
@@ -120,6 +142,9 @@ export async function runManagerRefactor(
     routingYaml,
     fallbackProviderId: 'codex-cli'
   });
+  const roleProviderMap = parseRoleProviderMap(
+    routingYaml ? providersRuntime.parseRoutingYaml(routingYaml) : undefined
+  );
 
   const providerResolver =
     dependencies.providerResolver ?? createDefaultProviderResolver(providersRuntime);
@@ -160,23 +185,39 @@ export async function runManagerRefactor(
     runDir,
     workspaceDir: rootDir,
     request,
-    defaultProviderId
+    defaultProviderId,
+    roleProviderMap
   });
+  const summaryPath = path.resolve(runDir, 'summary.md');
+  await writeFile(
+    summaryPath,
+    createRunSummaryText({
+      workflowName,
+      request,
+      runDir,
+      state: summary.state,
+      executedPhases: summary.executedPhases,
+      artifacts: summary.artifacts
+    }),
+    'utf8'
+  );
 
   log(`run id: ${runId}`);
   log(`상태: ${summary.state.status}`);
   log(`실행 phase: ${summary.executedPhases.join(' -> ')}`);
   log(`아티팩트 수: ${summary.artifacts.length}`);
   log(`상태 파일: ${path.join(runDir, 'current-run.json')}`);
+  log(`요약 파일: ${summaryPath}`);
 
   return {
     runId,
     runDir,
-    summary
+    summary,
+    summaryPath
   };
 }
 
-function parseRefactorRequest(args: string[]): string {
+function parseManagerRequest(args: string[]): string {
   if (args.length === 0) {
     throw new Error('요청 문장을 입력해야 합니다. 예: adt manager refactor "함수 분리"');
   }
@@ -193,6 +234,111 @@ function parseRefactorRequest(args: string[]): string {
   }
 
   return request;
+}
+
+function parseRoleProviderMap(routingConfig: { roles?: Record<string, string> } | undefined): Record<string, string> {
+  if (!routingConfig?.roles) {
+    return {};
+  }
+
+  const normalized: Record<string, string> = {};
+
+  for (const [rawRole, rawProviderId] of Object.entries(routingConfig.roles)) {
+    const role = rawRole.trim().toLowerCase();
+    const providerId = rawProviderId.trim();
+
+    if (role && providerId) {
+      normalized[role] = providerId;
+    }
+  }
+
+  return normalized;
+}
+
+function createRunSummaryText(options: {
+  workflowName: string;
+  request: string;
+  runDir: string;
+  state: {
+    status: string;
+    current_phase: string | null;
+    phases: Array<{ id: string; status: string }>;
+  };
+  executedPhases: string[];
+  artifacts: Array<{ phase: string; relativePath: string }>;
+}): string {
+  const phaseTimeline = options.executedPhases.length
+    ? options.executedPhases.map((phase, index) => `- ${index + 1}. ${phase}`).join('\n')
+    : '- 실행된 phase가 없습니다.';
+
+  const phaseSummaryRows = options.state.phases.map(
+    (phase) => `| ${phase.id} | ${phase.status} |`
+  );
+
+  const artifactsByPhase = buildArtifactsByPhase(options.artifacts);
+  const artifactSummaryRows = options.state.phases.map((phase) => {
+    const phaseArtifacts = artifactsByPhase.get(phase.id) ?? [];
+    const artifactsText = phaseArtifacts.length
+      ? phaseArtifacts.map((artifactPath) => `  - ${artifactPath}`).join('\n')
+      : '  - (없음)';
+
+    return [`- ${phase.id} (${phase.status})`, artifactsText].join('\n');
+  });
+
+  const summaryLines = [
+    '# AAO 실행 요약',
+    `- workflow: ${options.workflowName}`,
+    `- request: ${options.request}`,
+    `- status: ${options.state.status}`,
+    `- current_phase: ${options.state.current_phase ?? 'none'}`,
+    '',
+    '## 실행 phase',
+    phaseTimeline,
+    '',
+    '## phase 상태',
+    '| phase | status |',
+    '| --- | --- |',
+    ...phaseSummaryRows,
+    '',
+    '## phase별 아티팩트',
+    ...artifactSummaryRows,
+    '',
+    '## 아티팩트',
+    options.artifacts.length > 0
+      ? options.artifacts.map((artifact) => `- ${artifact.relativePath}`).join('\n')
+      : '- 아티팩트가 없습니다.',
+    '',
+    '## 위치',
+    `- runDir: ${path.resolve(options.runDir)}`,
+    `- current-run: ${path.resolve(options.runDir, 'current-run.json')}`,
+    `- log: ${path.resolve(options.runDir, 'logs')}`,
+    `- artifacts: ${path.resolve(options.runDir, 'artifacts')}`,
+    '',
+    `총 아티팩트 개수: ${options.artifacts.length}개`
+  ];
+
+  if (!options.artifacts.length) {
+    summaryLines.push('- 최근에 생성된 아티팩트가 없습니다.');
+  }
+
+  return [
+    ...summaryLines
+  ].join('\n');
+}
+
+function buildArtifactsByPhase(
+  artifacts: Array<{ phase: string; relativePath: string }>
+): Map<string, string[]> {
+  const grouped = new Map<string, string[]>();
+
+  for (const artifact of artifacts) {
+    const phase = artifact.phase.trim();
+    const paths = grouped.get(phase) ?? [];
+    paths.push(artifact.relativePath);
+    grouped.set(phase, paths);
+  }
+
+  return grouped;
 }
 
 function createRunId(workflowName: string, nowFactory: () => Date): string {

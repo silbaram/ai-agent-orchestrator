@@ -56,8 +56,99 @@ test('adt manager refactor는 승인 후 workflow를 끝까지 실행하고 상�
       true
     );
 
+    const summaryRaw = await readFile(path.join(runRoot, runDirs[0] ?? '', 'summary.md'), 'utf8');
+    assert.match(summaryRaw, /AAO 실행 요약/);
+
     const changed = await readFile(path.join(temporaryDirectory, TARGET_FILE_NAME), 'utf8');
     assert.equal(changed, 'implemented\n');
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('adt manager feature-order-page 워크플로도 동일한 종료 플로우로 동작한다.', async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-manager-feature-'));
+
+  try {
+    await initWorkspace({ baseDir: temporaryDirectory });
+    await setupGitWorkspace(temporaryDirectory, 'draft');
+
+    const logs: string[] = [];
+    const cli = createCli({
+      manager: {
+        cwd: () => temporaryDirectory,
+        approvalHandler: async () => true,
+        providerResolver: () => createMockProvider('pass'),
+        defaultProviderId: 'mock',
+        checkCommandIds: [],
+        log: (message) => {
+          logs.push(message);
+        }
+      }
+    });
+
+    await cli.parse([
+      'node',
+      'adt',
+      'manager',
+      'feature-order-page',
+      '주문',
+      '페이지',
+      '구현'
+    ]);
+
+    assert.equal(logs.some((line) => line.startsWith('run id: feature-order-page-')), true);
+    assert.equal(logs.includes('상태: completed'), true);
+
+    const runRoot = path.join(temporaryDirectory, '.runs', 'workflows');
+    const runDirs = await readdir(runRoot);
+
+    assert.equal(runDirs.length, 1);
+
+    const summaryRaw = await readFile(path.join(runRoot, runDirs[0] ?? '', 'summary.md'), 'utf8');
+    assert.match(summaryRaw, /AAO 실행 요약/);
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('feature-order-page는 요청 템플릿 변수를 보존한 채 실행되어 summary에 반영된다.', async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-manager-feature-template-'));
+  const prompts: string[] = [];
+
+  try {
+    await initWorkspace({ baseDir: temporaryDirectory });
+    await setupGitWorkspace(temporaryDirectory, 'draft');
+
+    const cli = createCli({
+      manager: {
+        cwd: () => temporaryDirectory,
+        approvalHandler: async () => true,
+        providerResolver: () => createPromptRecordingProvider('pass', prompts),
+        defaultProviderId: 'mock',
+        checkCommandIds: [],
+        log: () => {
+          // 테스트에서는 로그 검증이 목적이 아닙니다.
+        }
+      }
+    });
+
+    const request = ['주문', '페이지', '요청', '자동', '반영', '처리'].join(' ');
+
+    await cli.parse(['node', 'adt', 'manager', 'feature-order-page', ...request.split(' ')]);
+
+    assert.equal(
+      prompts.some((prompt) => prompt.includes(`요청=${request}`)),
+      true,
+      '요청 템플릿이 user prompt로 전달되어야 합니다.'
+    );
+    const runRoot = path.join(temporaryDirectory, '.runs', 'workflows');
+    const runDirs = await readdir(runRoot);
+    const summaryRaw = await readFile(path.join(runRoot, runDirs[0] ?? '', 'summary.md'), 'utf8');
+
+    assert.match(summaryRaw, /workflow:\s*feature-order-page/);
+    assert.match(summaryRaw, /실행 phase/);
+    assert.match(summaryRaw, /plan|manager_plan_report|review/);
   } finally {
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
@@ -151,6 +242,30 @@ function createMockProvider(mode: 'pass' | 'ask'): Provider {
     },
     async run(input: ProviderRunInput) {
       const phaseId = readPhaseId(input.userPrompt);
+
+      return {
+        text: responseForPhase(phaseId, mode),
+        meta: {
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          command: ['mock-provider']
+        }
+      };
+    }
+  };
+}
+
+function createPromptRecordingProvider(mode: 'pass' | 'ask', prompts: string[]): Provider {
+  return {
+    id: 'mock',
+    capabilities: {
+      systemPromptMode: 'inline',
+      supportsPatchOutput: true
+    },
+    async run(input: ProviderRunInput) {
+      const phaseId = readPhaseId(input.userPrompt);
+      prompts.push(input.userPrompt);
 
       return {
         text: responseForPhase(phaseId, mode),

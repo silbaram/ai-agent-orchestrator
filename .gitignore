@@ -20,3 +20,6 @@ ai-dev-team/
 
 .DS_Store
 AGENTS.md
+
+# 로컬 실험/임시 GitHub workflow
+.github/workflows/ci.yml

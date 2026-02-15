@@ -20,7 +20,8 @@ const EXPECTED_FILES = [
   'ai-dev-team/config/routing.yaml',
   'ai-dev-team/config/gatekeeper.yaml',
   'ai-dev-team/config/tools.yaml',
-  'ai-dev-team/config/workflows/refactor.yaml'
+  'ai-dev-team/config/workflows/refactor.yaml',
+  'ai-dev-team/config/workflows/feature-order-page.yaml'
 ] as const;
 
 test('aao init은 워크스페이스 구조를 생성하고 중복 생성을 막는다.', async () => {
@@ -49,12 +50,22 @@ test('aao init은 워크스페이스 구조를 생성하고 중복 생성을 막
       'utf8'
     );
     assert.match(workflowTemplate, /name: refactor/);
+    assert.match(
+      await readFile(
+        path.join(temporaryDirectory, 'ai-dev-team/config/workflows/feature-order-page.yaml'),
+        'utf8'
+      ),
+      /name: feature-order-page/
+    );
 
     const routingTemplate = await readFile(
       path.join(temporaryDirectory, 'ai-dev-team/config/routing.yaml'),
       'utf8'
     );
     assert.match(routingTemplate, /provider:\s+codex-cli/);
+    assert.match(routingTemplate, /manager:\s+gemini/);
+    assert.match(routingTemplate, /planner:\s+codex-cli/);
+    assert.match(routingTemplate, /developer:\s+claude/);
 
     const toolsTemplate = await readFile(
       path.join(temporaryDirectory, 'ai-dev-team/config/tools.yaml'),

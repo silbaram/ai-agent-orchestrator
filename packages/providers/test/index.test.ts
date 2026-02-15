@@ -6,6 +6,9 @@ import {
   buildCodexExecCommand,
   createProviderFromSelection,
   createProviderRegistry,
+  parseDefaultWorkflowFromRoutingYaml,
+  parseRoutingYaml,
+  resolveProviderForRole,
   parseProviderIdFromRoutingYaml,
   resolveProviderId
 } from '../src/index.ts';
@@ -71,7 +74,7 @@ test('registry/factory는 routing 설정으로 provider를 선택한다.', () =>
   });
 
   assert.equal(provider.id, 'codex-cli');
-  assert.deepEqual(registry.list(), ['codex-cli']);
+  assert.deepEqual(registry.list(), ['claude', 'codex-cli', 'gemini']);
 });
 
 test('resolveProviderId는 fallback을 처리한다.', () => {
@@ -81,4 +84,36 @@ test('resolveProviderId는 fallback을 처리한다.', () => {
   });
 
   assert.equal(providerId, 'codex-cli');
+});
+
+test('parseRoutingYaml는 roles 및 default_workflow를 파싱한다.', () => {
+  const config = parseRoutingYaml(
+    [
+      'provider: codex-cli',
+      'default_workflow: refactor',
+      'roles:',
+      '  manager: gemini',
+      '  planner: codex-cli',
+      '  developer: claude'
+    ].join('\n')
+  );
+
+  assert.equal(config.provider, 'codex-cli');
+  assert.equal(config.defaultWorkflow, 'refactor');
+  assert.equal(config.roles.manager, 'gemini');
+  assert.equal(config.roles.developer, 'claude');
+});
+
+test('parseDefaultWorkflowFromRoutingYaml는 default_workflow를 추출한다.', () => {
+  const defaultWorkflow = parseDefaultWorkflowFromRoutingYaml('default_workflow: release');
+  assert.equal(defaultWorkflow, 'release');
+});
+
+test('resolveProviderForRole는 role 매핑을 사용해 provider를 선택한다.', () => {
+  const config = parseRoutingYaml(
+    ['roles:', '  planner: claude', '  developer: gemini'].join('\n')
+  );
+
+  assert.equal(resolveProviderForRole(config, 'planner'), 'claude');
+  assert.equal(resolveProviderForRole(config, 'unknown', 'codex-cli'), 'codex-cli');
 });

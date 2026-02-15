@@ -22,6 +22,10 @@ export class ProviderRegistry {
     this.factories.set(providerId, factory);
   }
 
+  has(providerId: string): boolean {
+    return this.factories.has(providerId);
+  }
+
   create(providerId: string): Provider {
     const factory = this.factories.get(providerId);
 
@@ -43,6 +47,8 @@ export function createProviderRegistry(
   const registry = new ProviderRegistry();
 
   registry.register('codex-cli', () => new CodexCliProvider(options.codexCli));
+  registry.register('claude', () => new CodexCliProvider(options.codexCli));
+  registry.register('gemini', () => new CodexCliProvider(options.codexCli));
 
   return registry;
 }

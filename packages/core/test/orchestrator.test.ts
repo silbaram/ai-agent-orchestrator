@@ -146,6 +146,69 @@ test('Orchestrator는 FIX 분기로 refactor workflow를 완료한다.', async (
   assert.equal(finalContent, 'gamma\n');
 });
 
+test('Orchestrator는 phase.provider가 없을 때 roleProviderMap로 provider를 선택한다.', async (t) => {
+  const workspaceDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-role-workspace-'));
+  const runDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-role-run-'));
+  const workflowPath = path.join(workspaceDir, 'role.yaml');
+
+  t.after(async () => {
+    await rm(runDir, { recursive: true, force: true });
+    await rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  const workflowTemplate = [
+    'name: role-mapping',
+    'entry_phase: plan',
+    'phases:',
+    '  - id: plan',
+    '    type: llm',
+    '    role: planner',
+    '    prompt_template: "phase=plan request={{request}}"',
+    '    next: review',
+    '  - id: review',
+    '    type: llm',
+    '    role: reviewer',
+    '    prompt_template: "phase=review latest={{latest_output}}"',
+    '    terminal_status: completed',
+    ''
+  ].join('\n');
+
+  await writeFile(workflowPath, workflowTemplate, 'utf8');
+  const providerCalls: string[] = [];
+  const providers = new Map<string, Provider>([
+    ['codex', createNamedMockProvider('codex', () => 'PLAN OUTPUT')],
+    ['claude', createNamedMockProvider('claude', () => 'REVIEW OUTPUT')]
+  ]);
+
+  const orchestrator = new Orchestrator({
+    providerResolver: (providerId) => {
+      providerCalls.push(providerId);
+      const provider = providers.get(providerId);
+
+      if (!provider) {
+        throw new Error(`알 수 없는 provider: ${providerId}`);
+      }
+
+      return provider;
+    },
+    approvalHandler: async () => true
+  });
+
+  const result = await orchestrator.run({
+    workflowPath,
+    runDir,
+    workspaceDir,
+    request: '역할 기반 provider 분기 확인',
+    roleProviderMap: {
+      planner: 'codex',
+      reviewer: 'claude'
+    }
+  });
+
+  assert.equal(result.state.status, 'completed');
+  assert.deepEqual(providerCalls, ['codex', 'claude']);
+});
+
 test('Orchestrator는 ASK 분기로 전환해 awaiting_input 상태를 기록한다.', async (t) => {
   const runDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-ask-'));
   const workspaceDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-workspace-'));
@@ -325,6 +388,32 @@ function createMockProvider(
           stdout: '',
           stderr: '',
           command: ['mock-provider']
+        }
+      };
+    }
+  };
+}
+
+function createNamedMockProvider(
+  providerId: string,
+  responder: (phaseId: string) => string
+): Provider {
+  return {
+    id: providerId,
+    capabilities: {
+      systemPromptMode: 'inline',
+      supportsPatchOutput: true
+    },
+    async run(input: ProviderRunInput) {
+      const phaseId = readPhaseId(input.userPrompt);
+
+      return {
+        text: responder(phaseId),
+        meta: {
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          command: [providerId]
         }
       };
     }

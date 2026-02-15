@@ -9,8 +9,11 @@
 - 핵심 구현:
   - `adt/aao init` 워크스페이스 생성
   - `adt/aao manager refactor "<요청>"` 워크플로 실행
+  - `adt/aao manager feature-order-page "<요청>"` 워크플로 추가
   - Provider 어댑터(`codex-cli`), patch 추출/적용, Gatekeeper 검사/승인/auto-fix
+  - 역할별 provider 분업 (`manager/gemini`, `planner/codex-cli`, `developer/claude`, `evaluator/codex-cli`, `fixer/codex-cli`, `reviewer/codex-cli`)
   - TUI 런너(`adt-tui`) 및 회귀 테스트 픽스처
+  - `summary.md` 실행 요약 생성 및 phase별 아티팩트 정리
 - 미구현/제약:
   - `adt/aao run`은 아직 placeholder
   - `init --force`는 파싱되지만 현재 미지원 에러를 반환
@@ -64,12 +67,22 @@ node packages/cli/dist/index.js manager refactor "함수 분리 및 네이밍 �
 
 `manager refactor`는 기본적으로 `ai-dev-team/config/workflows/refactor.yaml`을 읽고, run 결과를 `.runs/workflows/<run-id>/`에 기록한다.
 
+3-1) 주문 페이지 feature 워크플로 실행
+
+```bash
+node packages/cli/dist/index.js manager feature-order-page "주문 페이지 API 화면 구현"
+```
+
+`manager feature-order-page`는 `ai-dev-team/config/workflows/feature-order-page.yaml`을 읽고, 동일한 run 결과 저장 구조를 사용한다.
+
 ## CLI 명령
 
 - `init`
   - 현재 디렉토리에 `ai-dev-team` 워크스페이스 템플릿 생성
 - `manager refactor "<요청>"`
   - workflow 실행 + 승인 단계(`y/N`) 처리
+- `manager feature-order-page "<요청>"`
+  - 주문 페이지 feature workflow 실행 + 승인 단계(`y/N`) 처리
 - `run`
   - 다음 단계 구현 예정 (현재 메시지 출력만 수행)
 
@@ -90,13 +103,21 @@ ai-dev-team/
    ├─ gatekeeper.yaml
    ├─ tools.yaml
    └─ workflows/
-      └─ refactor.yaml
+      ├─ refactor.yaml
+      └─ feature-order-page.yaml
 ```
 
 설정 요약:
 
 - `config/routing.yaml`
   - 기본 provider 선택 (`provider: codex-cli`)
+  - 기본 역할별 provider 매핑:
+    - `manager: gemini`
+    - `planner: codex-cli`
+    - `developer: claude`
+    - `evaluator: codex-cli`
+    - `fixer: codex-cli`
+    - `reviewer: codex-cli`
 - `config/tools.yaml`
   - allowlist 커맨드 정의 (`id`, `executable`, `args`, `timeout_ms`)
 - `config/gatekeeper.yaml`
@@ -125,6 +146,7 @@ ai-dev-team/
 ```text
 .runs/workflows/<run-id>/
 ├─ current-run.json
+├─ summary.md
 ├─ artifacts/
 │  └─ <phase>/
 │     ├─ iter-0001.raw.txt
@@ -141,6 +163,70 @@ ai-dev-team/
    ├─ gatekeeper-<phase>.log
    └─ tool-runtime.log
 ```
+
+### summary.md 예시
+
+```text
+# AAO 실행 요약
+- workflow: refactor
+- request: 주문 기능 리팩터 요청
+- status: completed
+- current_phase: none
+
+## 실행 phase
+- 1. plan
+- 2. manager_plan_report
+- 3. approve
+- 4. implement
+- 5. evaluate
+- 6. manager_review_report
+- 7. review
+
+## phase 상태
+| phase | status |
+| --- | --- |
+| plan | completed |
+| manager_plan_report | completed |
+| approve | completed |
+| implement | completed |
+| evaluate | completed |
+| manager_review_report | completed |
+| review | completed |
+
+## phase별 아티팩트
+| plan | completed |
+  - plan/iter-0001.raw.txt
+  - plan/iter-0001.plan.md
+| manager_plan_report | completed |
+  - manager_plan_report/iter-0001.raw.txt
+| approve | completed |
+  - approve/iter-0001.approval.txt
+| implement | completed |
+  - implement/iter-0001.raw.txt
+  - implement/iter-0001.patch
+| evaluate | completed |
+  - evaluate/iter-0001.raw.txt
+  - evaluate/iter-0001.patch
+| manager_review_report | completed |
+  - manager_review_report/iter-0001.raw.txt
+| review | completed |
+  - review/iter-0001.raw.txt
+...
+
+## 위치
+- runDir: /.../.runs/workflows/refactor-2025021509400000-abcdef
+- current-run: /.../.runs/workflows/refactor-2025021509400000-abcdef/current-run.json
+- log: /.../.runs/workflows/refactor-2025021509400000-abcdef/logs
+- artifacts: /.../.runs/workflows/refactor-2025021509400000-abcdef/artifacts
+총 아티팩트 개수: 9개
+```
+
+### 최근 요약 포맷 정리
+
+- `실행 phase`: 순차 실행 단계 표시
+- `phase 상태`: 각 phase별 완료/실패/대기 상태
+- `phase별 아티팩트`: phase별 산출물을 바로 추적
+- `위치`: `runDir`, `current-run`, `logs`, `artifacts` 경로 집약
 
 ## TUI 실행
 
@@ -159,7 +245,7 @@ TUI에서 확인 가능한 항목:
 
 - `packages/core`: Orchestrator, Workflow 파서, Artifact/State/Log 저장소, Patch-first, Gatekeeper, CommandRunner
 - `packages/providers`: Provider registry + `codex-cli` adapter
-- `packages/cli`: `init`, `manager refactor` 명령
+- `packages/cli`: `init`, `manager refactor`, `manager feature-order-page` 명령
 - `packages/tui`: 텍스트 기반 런 모니터링/승인 UI
 
 ## 관련 문서
