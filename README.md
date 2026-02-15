@@ -1,22 +1,22 @@
 # ai-agent-orchestrator
 
 `ai-agent-orchestrator`는 AI 개발 작업을 아티팩트 중심으로 실행하는 CLI/TUI 오케스트레이터다.  
-핵심은 `patch-first`(developer/fixer 출력은 diff 우선)와 `safety-first`(allowlist + Gatekeeper 승인)이며, 모든 실행 결과를 `.runs/`에 기록한다.
+핵심은 `patch-first`(developer/fixer 출력은 diff 우선)와 `safety-first`(allowlist + Gatekeeper 승인)이며, 실행 결과는 현재 워크스페이스 기준 `.runs/workflows/<run-id>/`에 기록한다.
 
 ## 현재 구현 상태
 
 - 완료 Phase: `00~09`
 - 핵심 구현:
-  - `adt/aao init` 워크스페이스 생성
-  - `adt/aao manager refactor "<요청>"` 워크플로 실행
-  - `adt/aao manager feature-order-page "<요청>"` 워크플로 추가
-  - `adt/aao manager feature "<요청>"` 워크플로 템플릿 추가
+- `aao init` 워크스페이스 생성
+- `aao manager refactor "<요청>"` 워크플로 실행
+- `aao manager feature-order-page "<요청>"` 워크플로 추가
+- `aao manager feature "<요청>"` 워크플로 템플릿 추가
   - Provider 어댑터(`codex-cli`, `gemini-cli`, `claude-cli`), patch 추출/적용, Gatekeeper 검사/승인/auto-fix
   - 역할별 provider 분업 (`manager/gemini-cli`, `planner/codex-cli`, `developer/claude-cli`, `evaluator/codex-cli`, `fixer/codex-cli`, `reviewer/codex-cli`)
   - TUI 런너(`adt-tui`) 및 회귀 테스트 픽스처
   - `summary.md` 실행 요약 생성 및 phase별 아티팩트 정리
 - 미구현/제약:
-  - `adt/aao run`은 아직 placeholder
+  - `aao run`은 아직 placeholder
   - `init --force`는 파싱되지만 현재 미지원 에러를 반환
   - 전용 `resume/approve` CLI 커맨드는 아직 없음
 
@@ -97,7 +97,7 @@ node packages/cli/dist/index.js manager feature "<요청 내용>"
 - `run`
   - 다음 단계 구현 예정 (현재 메시지 출력만 수행)
 
-바이너리 alias는 `aao`, `adt` 둘 다 지원한다.
+바이너리는 `aao`를 사용한다.
 
 ## 생성되는 워크스페이스
 
@@ -136,6 +136,11 @@ ai-dev-team/
   - 현재 구현에서 사용하는 키:
     - `auto_fix.max_retries`
     - `checks.command_ids`
+- `roles/*.md`
+  - 현재 워크플로우는 `system_prompt_file`을 읽어 role별 프롬프트를 주입한다.
+  - `aao init`은 `packages/cli/templates/roles/*.md`를 기준으로 아래 파일을 생성한다.
+    - `planner.md`, `manager.md`, `developer.md`, `evaluator.md`, `fixer.md`, `reviewer.md`, `analyzer.md`, `documenter.md`, `improver.md`
+  - 템플릿 파일이 없으면 `aao init`이 실패합니다.
 
 ## 워크플로/안전 동작
 
@@ -233,3 +238,9 @@ CLI 등록된 provider id는 다음을 사용합니다: `codex-cli`, `gemini-cli
 - 비전: `docs/vision.md`
 - 계약: `docs/contracts.md`
 - Phase 프롬프트: `.codex/prompts/`
+
+## 로컬 산출물 정리
+
+- `ai-dev-team/`와 `.runs/`는 `init`/`manager` 실행 시 생성되는 로컬 산출물이므로 `.gitignore`에 포함되어 있다.
+- 필요 시 다음으로 정리 가능하다.
+  - `rm -rf ai-dev-team .runs`

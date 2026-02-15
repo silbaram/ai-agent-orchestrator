@@ -1,4 +1,6 @@
 import { ArtifactStore, type ArtifactRecord } from './artifact-store.ts';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import type { CommandExecutionResult } from './command-runner.ts';
 import { Gatekeeper } from './gatekeeper.ts';
 import {
@@ -206,18 +208,21 @@ export class Orchestrator {
         }
 
         const provider = this.providerResolver(providerId, phase);
-        const systemPrompt = renderTemplate(
-          phase.systemPromptTemplate ?? `당신은 ${phase.role} 역할로 동작한다.`,
-          {
-            request: input.request,
-            workflowName: workflow.name,
-            phaseId: phase.id,
-            role: phase.role,
-            iteration,
-            outputs,
-            latestOutput
-          }
-        );
+        const renderContext = {
+          request: input.request,
+          workflowName: workflow.name,
+          phaseId: phase.id,
+          role: phase.role,
+          iteration,
+          outputs,
+          latestOutput
+        };
+        const systemPromptTemplate = await resolveSystemPromptTemplate({
+          workspaceDir: input.workspaceDir,
+          phase,
+          fallbackTemplate: phase.systemPromptTemplate ?? `당신은 ${phase.role} 역할로 동작한다.`
+        });
+        const systemPrompt = renderTemplate(systemPromptTemplate, renderContext);
         const userPrompt = renderTemplate(phase.promptTemplate, {
           request: input.request,
           workflowName: workflow.name,
@@ -449,6 +454,30 @@ function renderTemplate(template: string, context: RenderContext): string {
     const resolved = resolveTemplateKey(key, context);
     return resolved ?? '';
   });
+}
+
+async function resolveSystemPromptTemplate(input: {
+  workspaceDir: string;
+  phase: LlmWorkflowPhase;
+  fallbackTemplate: string;
+}): Promise<string> {
+  if (!input.phase.systemPromptFile) {
+    return input.fallbackTemplate;
+  }
+
+  const workspaceRoot = path.resolve(input.workspaceDir);
+  const promptPath = path.resolve(workspaceRoot, input.phase.systemPromptFile);
+  const relativePath = path.relative(workspaceRoot, promptPath);
+
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    throw new Error(`system_prompt_file이 워크스페이스 바깥입니다: ${input.phase.systemPromptFile}`);
+  }
+
+  try {
+    return await readFile(promptPath, 'utf8');
+  } catch (error) {
+    throw new Error(`system_prompt_file을 읽을 수 없습니다: ${input.phase.systemPromptFile} (${toErrorMessage(error)})`);
+  }
 }
 
 function resolveTemplateKey(key: string, context: RenderContext): string | undefined {

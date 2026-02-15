@@ -11,7 +11,7 @@ import { initWorkspace } from '../src/workspace/init-workspace.ts';
 
 const TARGET_FILE_NAME = 'task.txt';
 
-test('adt manager refactor는 승인 후 workflow를 끝까지 실행하고 상태를 남긴다.', async () => {
+test('aao manager refactor는 승인 후 workflow를 끝까지 실행하고 상태를 남긴다.', async () => {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-manager-'));
 
   try {
@@ -32,7 +32,7 @@ test('adt manager refactor는 승인 후 workflow를 끝까지 실행하고 상�
       }
     });
 
-    await cli.parse(['node', 'adt', 'manager', 'refactor', '함수', '분리', '요청']);
+    await cli.parse(['node', 'aao', 'manager', 'refactor', '함수', '분리', '요청']);
 
     assert.equal(logs.some((line) => line.startsWith('run id: refactor-')), true);
     assert.equal(logs.includes('상태: completed'), true);
@@ -66,7 +66,7 @@ test('adt manager refactor는 승인 후 workflow를 끝까지 실행하고 상�
   }
 });
 
-test('adt manager feature-order-page 워크플로도 동일한 종료 플로우로 동작한다.', async () => {
+test('aao manager feature-order-page 워크플로도 동일한 종료 플로우로 동작한다.', async () => {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-manager-feature-'));
 
   try {
@@ -89,7 +89,7 @@ test('adt manager feature-order-page 워크플로도 동일한 종료 플로우�
 
     await cli.parse([
       'node',
-      'adt',
+      'aao',
       'manager',
       'feature-order-page',
       '주문',
@@ -135,7 +135,7 @@ test('feature-order-page는 요청 템플릿 변수를 보존한 채 실행되�
 
     const request = ['주문', '페이지', '요청', '자동', '반영', '처리'].join(' ');
 
-    await cli.parse(['node', 'adt', 'manager', 'feature-order-page', ...request.split(' ')]);
+    await cli.parse(['node', 'aao', 'manager', 'feature-order-page', ...request.split(' ')]);
 
     assert.equal(
       prompts.some((prompt) => prompt.includes(`요청=${request}`)),
@@ -154,7 +154,7 @@ test('feature-order-page는 요청 템플릿 변수를 보존한 채 실행되�
   }
 });
 
-test('adt manager refactor는 승인 거절 시 ask phase로 이동해 awaiting_input으로 종료한다.', async () => {
+test('aao manager refactor는 승인 거절 시 ask phase로 이동해 awaiting_input으로 종료한다.', async () => {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-manager-reject-'));
 
   try {
@@ -174,7 +174,7 @@ test('adt manager refactor는 승인 거절 시 ask phase로 이동해 awaiting_
       }
     });
 
-    await cli.parse(['node', 'adt', 'manager', 'refactor', '추가', '정보', '필요']);
+    await cli.parse(['node', 'aao', 'manager', 'refactor', '추가', '정보', '필요']);
 
     const runRoot = path.join(temporaryDirectory, '.runs', 'workflows');
     const runDirs = await readdir(runRoot);
@@ -194,7 +194,7 @@ test('adt manager refactor는 승인 거절 시 ask phase로 이동해 awaiting_
   }
 });
 
-test('adt manager refactor는 gatekeeper 위험 변경 승인 거절 시 canceled로 종료한다.', async () => {
+test('aao manager refactor는 gatekeeper 위험 변경 승인 거절 시 canceled로 종료한다.', async () => {
   const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-manager-gatekeeper-'));
 
   try {
@@ -224,7 +224,7 @@ test('adt manager refactor는 gatekeeper 위험 변경 승인 거절 시 cancele
       }
     });
 
-    await cli.parse(['node', 'adt', 'manager', 'refactor', '삭제', '위험', '검증']);
+    await cli.parse(['node', 'aao', 'manager', 'refactor', '삭제', '위험', '검증']);
 
     assert.equal(prompts.some((prompt) => prompt.includes('[Gatekeeper]')), true);
     assert.equal(logs.includes('상태: canceled'), true);

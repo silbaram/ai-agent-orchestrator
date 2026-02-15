@@ -250,7 +250,7 @@ async function readManagerMessages(
 
 function parseManagerRequest(args: string[]): string {
   if (args.length === 0) {
-    throw new Error('요청 문장을 입력해야 합니다. 예: adt manager refactor "함수 분리"');
+    throw new Error('요청 문장을 입력해야 합니다. 예: aao manager refactor "함수 분리"');
   }
 
   for (const arg of args) {

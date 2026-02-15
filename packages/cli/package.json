@@ -4,8 +4,7 @@
   "private": true,
   "type": "module",
   "bin": {
-    "aao": "dist/index.js",
-    "adt": "dist/index.js"
+    "aao": "dist/index.js"
   },
   "main": "dist/index.js",
   "exports": {

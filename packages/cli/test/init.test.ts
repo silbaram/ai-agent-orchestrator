@@ -20,8 +20,18 @@ const EXPECTED_FILES = [
   'ai-dev-team/config/routing.yaml',
   'ai-dev-team/config/gatekeeper.yaml',
   'ai-dev-team/config/tools.yaml',
+  'ai-dev-team/config/workflows/feature.yaml',
   'ai-dev-team/config/workflows/refactor.yaml',
-  'ai-dev-team/config/workflows/feature-order-page.yaml'
+  'ai-dev-team/config/workflows/feature-order-page.yaml',
+  'ai-dev-team/roles/analyzer.md',
+  'ai-dev-team/roles/documenter.md',
+  'ai-dev-team/roles/planner.md',
+  'ai-dev-team/roles/manager.md',
+  'ai-dev-team/roles/developer.md',
+  'ai-dev-team/roles/evaluator.md',
+  'ai-dev-team/roles/fixer.md',
+  'ai-dev-team/roles/improver.md',
+  'ai-dev-team/roles/reviewer.md'
 ] as const;
 
 test('aao init은 워크스페이스 구조를 생성하고 중복 생성을 막는다.', async () => {
@@ -57,6 +67,11 @@ test('aao init은 워크스페이스 구조를 생성하고 중복 생성을 막
       ),
       /name: feature-order-page/
     );
+    const plannerPrompt = await readFile(
+      path.join(temporaryDirectory, 'ai-dev-team/roles/planner.md'),
+      'utf8'
+    );
+    assert.match(plannerPrompt, /Planner/);
 
     const routingTemplate = await readFile(
       path.join(temporaryDirectory, 'ai-dev-team/config/routing.yaml'),
