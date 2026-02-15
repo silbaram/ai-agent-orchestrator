@@ -100,7 +100,7 @@ export function registerManagerCommand(program: Command, dependencies: ManagerCo
 
   manager
     .command('feature-order-page')
-    .description('주문 페이지 기능 workflow를 실행한다.')
+    .description('기존 feature-order-page 템플릿 workflow를 실행한다.')
     .action(async (args) => {
       const request = parseManagerRequest(args);
       await runManagerWorkflow('feature-order-page', request, dependencies);

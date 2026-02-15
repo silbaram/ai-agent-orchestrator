@@ -63,15 +63,15 @@ node packages/cli/dist/index.js init
 3) refactor 워크플로 실행
 
 ```bash
-node packages/cli/dist/index.js manager refactor "함수 분리 및 네이밍 개선"
+node packages/cli/dist/index.js manager refactor "<요청 내용>"
 ```
 
 `manager refactor`는 기본적으로 `ai-dev-team/config/workflows/refactor.yaml`을 읽고, run 결과를 `.runs/workflows/<run-id>/`에 기록한다.
 
-3-1) 주문 페이지 feature 워크플로 실행
+3-1) feature-order-page 템플릿 워크플로 실행
 
 ```bash
-node packages/cli/dist/index.js manager feature-order-page "주문 페이지 API 화면 구현"
+node packages/cli/dist/index.js manager feature-order-page "<요청 내용>"
 ```
 
 `manager feature-order-page`는 `ai-dev-team/config/workflows/feature-order-page.yaml`을 읽고, 동일한 run 결과 저장 구조를 사용한다.
@@ -79,7 +79,7 @@ node packages/cli/dist/index.js manager feature-order-page "주문 페이지 API
 3-2) feature 워크플로 실행
 
 ```bash
-node packages/cli/dist/index.js manager feature "주문 페이지 결제 흐름 추가"
+node packages/cli/dist/index.js manager feature "<요청 내용>"
 ```
 
 `manager feature`는 `ai-dev-team/config/workflows/feature.yaml`을 읽고, 승인 후 implement/evaluate/review까지 진행한다.
@@ -93,7 +93,7 @@ node packages/cli/dist/index.js manager feature "주문 페이지 결제 흐름 
 - `manager feature "<요청>"`
   - feature workflow 실행 + 승인 단계(`y/N`) 처리
 - `manager feature-order-page "<요청>"`
-  - 주문 페이지 feature workflow 실행 + 승인 단계(`y/N`) 처리
+  - 기능 템플릿 feature workflow 실행 + 승인 단계(`y/N`) 처리
 - `run`
   - 다음 단계 구현 예정 (현재 메시지 출력만 수행)
 
@@ -176,63 +176,6 @@ ai-dev-team/
    └─ tool-runtime.log
 ```
 
-### summary.md 예시
-
-```text
-# AAO 실행 요약
-- workflow: refactor
-- request: 주문 기능 리팩터 요청
-- status: completed
-- current_phase: none
-
-## 실행 phase
-- 1. plan
-- 2. manager_plan_report
-- 3. approve
-- 4. implement
-- 5. evaluate
-- 6. manager_review_report
-- 7. review
-
-## phase 상태
-| phase | status |
-| --- | --- |
-| plan | completed |
-| manager_plan_report | completed |
-| approve | completed |
-| implement | completed |
-| evaluate | completed |
-| manager_review_report | completed |
-| review | completed |
-
-## phase별 아티팩트
-| plan | completed |
-  - plan/iter-0001.raw.txt
-  - plan/iter-0001.plan.md
-| manager_plan_report | completed |
-  - manager_plan_report/iter-0001.raw.txt
-| approve | completed |
-  - approve/iter-0001.approval.txt
-| implement | completed |
-  - implement/iter-0001.raw.txt
-  - implement/iter-0001.patch
-| evaluate | completed |
-  - evaluate/iter-0001.raw.txt
-  - evaluate/iter-0001.patch
-| manager_review_report | completed |
-  - manager_review_report/iter-0001.raw.txt
-| review | completed |
-  - review/iter-0001.raw.txt
-...
-
-## 위치
-- runDir: /.../.runs/workflows/refactor-2025021509400000-abcdef
-- current-run: /.../.runs/workflows/refactor-2025021509400000-abcdef/current-run.json
-- log: /.../.runs/workflows/refactor-2025021509400000-abcdef/logs
-- artifacts: /.../.runs/workflows/refactor-2025021509400000-abcdef/artifacts
-총 아티팩트 개수: 9개
-```
-
 ### 최근 요약 포맷 정리
 
 - `실행 phase`: 순차 실행 단계 표시
@@ -261,9 +204,9 @@ TUI에서 확인 가능한 항목:
 - `packages/cli`: `init`, `manager refactor`, `manager feature`, `manager feature-order-page` 명령
 - `packages/tui`: 텍스트 기반 런 모니터링/승인 UI
 
-## Provider 설정 예시
+## Provider 설정
 
-기본 설정(`ai-dev-team/config/routing.yaml`)에서 provider를 지정하는 예시:
+기본 설정(`ai-dev-team/config/routing.yaml`)에서 role별 provider를 아래 형태로 지정한다.
 
 ```yaml
 provider: codex-cli
@@ -276,26 +219,11 @@ roles:
   reviewer: codex-cli
 ```
 
-## Provider 실행 예시
+## Provider 실행 규칙
 
-`ai-dev-team/config/routing.yaml`의 `roles`를 조정해 role별 provider를 바꿔 실행할 수 있습니다.
-
-```bash
-# 관리자 역할은 gemini-cli, 개발자 역할은 claude-cli로 지정
-cat > ai-dev-team/config/routing.yaml <<'EOF'
-provider: codex-cli
-default_workflow: refactor
-roles:
-  manager: gemini-cli
-  planner: codex-cli
-  developer: claude-cli
-  evaluator: codex-cli
-  fixer: codex-cli
-  reviewer: codex-cli
-EOF
-
-node packages/cli/dist/index.js manager refactor "모듈 리팩터링 및 테스트 강화"
-```
+`routing.yaml`의 `roles`는 `role -> provider-id` 매핑을 그대로 반영한다.  
+허용 가능한 provider-id는 `codex-cli`, `gemini-cli`, `claude-cli`이다.
+(`gemini`, `claude`도 하위 호환으로 허용)
 
 CLI 등록된 provider id는 다음을 사용합니다: `codex-cli`, `gemini-cli`, `claude-cli`.
 (호환성 차원에서 `gemini`, `claude`도 내부적으로 허용됩니다.)
