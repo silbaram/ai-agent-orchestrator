@@ -99,6 +99,15 @@ export function parseProviderIdFromRoutingYaml(routingYamlText: string): string 
   return parsed.provider;
 }
 
+export function resolveProviderForRoleFromRoutingYaml(
+  routingYamlText: string,
+  role: string | undefined,
+  fallbackProviderId?: string
+): string | undefined {
+  const parsed = parseRoutingYaml(routingYamlText);
+  return resolveProviderForRole(parsed, role, fallbackProviderId);
+}
+
 export function parseDefaultWorkflowFromRoutingYaml(routingYamlText: string): string | undefined {
   const parsed = parseRoutingYaml(routingYamlText);
   return parsed.defaultWorkflow;

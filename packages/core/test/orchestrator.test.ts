@@ -209,6 +209,98 @@ test('Orchestrator는 phase.provider가 없을 때 roleProviderMap로 provider�
   assert.deepEqual(providerCalls, ['codex', 'claude']);
 });
 
+test('Orchestrator는 manager phase를 사용자 메시지로만 처리한다.', async (t) => {
+  const runDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-manager-run-'));
+  const workspaceDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-manager-workspace-'));
+  const workflowPath = path.join(workspaceDir, 'manager-report.yaml');
+
+  t.after(async () => {
+    await rm(runDir, { recursive: true, force: true });
+    await rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  const workflowTemplate = [
+    'name: manager-report',
+    'entry_phase: plan',
+    'phases:',
+    '  - id: plan',
+    '    type: llm',
+    '    role: planner',
+    '    provider: mock',
+    '    prompt_template: "phase=plan request={{request}}"',
+    '    next: manager_report',
+    '  - id: manager_report',
+    '    type: llm',
+    '    role: manager',
+    '    prompt_template: "phase=manager_report plan={{phase.plan.output}}"',
+    '    next: review',
+    '  - id: review',
+    '    type: llm',
+    '    role: reviewer',
+    '    provider: mock',
+    '    prompt_template: "phase=review latest={{latest_output}}"',
+    '    terminal_status: completed',
+    ''
+  ].join('\n');
+
+  await writeFile(workflowPath, workflowTemplate, 'utf8');
+
+  const provider = createMockProvider((phaseId) => {
+    if (phaseId === 'plan') {
+      return 'PLAN OUTPUT';
+    }
+
+    if (phaseId === 'manager_report') {
+      return '요청된 작업이 반영될 예정입니다.';
+    }
+
+    if (phaseId === 'review') {
+      return 'REVIEW OUTPUT';
+    }
+
+    return `UNEXPECTED:${phaseId}`;
+  });
+
+  const orchestrator = new Orchestrator({
+    providerResolver: () => provider,
+    approvalHandler: async () => true
+  });
+
+  const result = await orchestrator.run({
+    workflowPath,
+    runDir,
+    workspaceDir,
+    request: '문서 검토용 리포트 생성'
+  });
+
+  assert.equal(result.state.status, 'completed');
+  assert.deepEqual(result.executedPhases, ['plan', 'manager_report', 'review']);
+  assert.equal(
+    result.state.artifacts.manager_report?.some((artifact) => artifact.endsWith('.patch')) ?? false,
+    false
+  );
+  assert.equal(
+    result.state.artifacts.manager_report?.some((artifact) => artifact.endsWith('.diff.txt')) ?? false,
+    false
+  );
+
+  const managerReportArtifact = result.artifacts.find((artifact) =>
+    artifact.relativePath.endsWith('.manager-update.md')
+  );
+  assert.ok(managerReportArtifact);
+  const managerMessage = await readFile(
+    path.join(runDir, managerReportArtifact!.relativePath),
+    'utf8'
+  );
+
+  assert.match(managerMessage, /# USER_UPDATE/);
+  assert.match(managerMessage, /## TL;DR/);
+  assert.match(managerMessage, /## What changed/);
+  assert.match(managerMessage, /## Risks/);
+  assert.match(managerMessage, /## Actions needed/);
+  assert.match(managerMessage, /## Next/);
+});
+
 test('Orchestrator는 ASK 분기로 전환해 awaiting_input 상태를 기록한다.', async (t) => {
   const runDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-ask-'));
   const workspaceDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-workspace-'));

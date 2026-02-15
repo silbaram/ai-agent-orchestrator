@@ -10,8 +10,9 @@
   - `adt/aao init` 워크스페이스 생성
   - `adt/aao manager refactor "<요청>"` 워크플로 실행
   - `adt/aao manager feature-order-page "<요청>"` 워크플로 추가
-  - Provider 어댑터(`codex-cli`), patch 추출/적용, Gatekeeper 검사/승인/auto-fix
-  - 역할별 provider 분업 (`manager/gemini`, `planner/codex-cli`, `developer/claude`, `evaluator/codex-cli`, `fixer/codex-cli`, `reviewer/codex-cli`)
+  - `adt/aao manager feature "<요청>"` 워크플로 템플릿 추가
+  - Provider 어댑터(`codex-cli`, `gemini-cli`, `claude-cli`), patch 추출/적용, Gatekeeper 검사/승인/auto-fix
+  - 역할별 provider 분업 (`manager/gemini-cli`, `planner/codex-cli`, `developer/claude-cli`, `evaluator/codex-cli`, `fixer/codex-cli`, `reviewer/codex-cli`)
   - TUI 런너(`adt-tui`) 및 회귀 테스트 픽스처
   - `summary.md` 실행 요약 생성 및 phase별 아티팩트 정리
 - 미구현/제약:
@@ -24,7 +25,7 @@
 - Node.js `>= 22`
 - `pnpm` workspace 환경 권장
 - `git` 설치 필요 (patch 적용/변경 분석)
-- 실제 LLM 실행 시 `codex` CLI 설치 필요 (`codex-cli` provider 사용 시)
+- 실제 LLM 실행 시 CLI 설치 필요 (`codex-cli`, `gemini-cli`, `claude-cli` provider 사용 시)
 
 ## 개발 명령어
 
@@ -75,12 +76,22 @@ node packages/cli/dist/index.js manager feature-order-page "주문 페이지 API
 
 `manager feature-order-page`는 `ai-dev-team/config/workflows/feature-order-page.yaml`을 읽고, 동일한 run 결과 저장 구조를 사용한다.
 
+3-2) feature 워크플로 실행
+
+```bash
+node packages/cli/dist/index.js manager feature "주문 페이지 결제 흐름 추가"
+```
+
+`manager feature`는 `ai-dev-team/config/workflows/feature.yaml`을 읽고, 승인 후 implement/evaluate/review까지 진행한다.
+
 ## CLI 명령
 
 - `init`
   - 현재 디렉토리에 `ai-dev-team` 워크스페이스 템플릿 생성
 - `manager refactor "<요청>"`
   - workflow 실행 + 승인 단계(`y/N`) 처리
+- `manager feature "<요청>"`
+  - feature workflow 실행 + 승인 단계(`y/N`) 처리
 - `manager feature-order-page "<요청>"`
   - 주문 페이지 feature workflow 실행 + 승인 단계(`y/N`) 처리
 - `run`
@@ -104,7 +115,8 @@ ai-dev-team/
    ├─ tools.yaml
    └─ workflows/
       ├─ refactor.yaml
-      └─ feature-order-page.yaml
+      ├─ feature-order-page.yaml
+      └─ feature.yaml
 ```
 
 설정 요약:
@@ -112,9 +124,9 @@ ai-dev-team/
 - `config/routing.yaml`
   - 기본 provider 선택 (`provider: codex-cli`)
   - 기본 역할별 provider 매핑:
-    - `manager: gemini`
+    - `manager: gemini-cli`
     - `planner: codex-cli`
-    - `developer: claude`
+    - `developer: claude-cli`
     - `evaluator: codex-cli`
     - `fixer: codex-cli`
     - `reviewer: codex-cli`
@@ -244,9 +256,49 @@ TUI에서 확인 가능한 항목:
 ## 패키지 구성
 
 - `packages/core`: Orchestrator, Workflow 파서, Artifact/State/Log 저장소, Patch-first, Gatekeeper, CommandRunner
-- `packages/providers`: Provider registry + `codex-cli` adapter
-- `packages/cli`: `init`, `manager refactor`, `manager feature-order-page` 명령
+- `packages/providers`: Provider registry + `codex-cli`, `gemini-cli`, `claude-cli` adapter
+
+- `packages/cli`: `init`, `manager refactor`, `manager feature`, `manager feature-order-page` 명령
 - `packages/tui`: 텍스트 기반 런 모니터링/승인 UI
+
+## Provider 설정 예시
+
+기본 설정(`ai-dev-team/config/routing.yaml`)에서 provider를 지정하는 예시:
+
+```yaml
+provider: codex-cli
+roles:
+  manager: gemini-cli
+  planner: codex-cli
+  developer: claude-cli
+  evaluator: codex-cli
+  fixer: codex-cli
+  reviewer: codex-cli
+```
+
+## Provider 실행 예시
+
+`ai-dev-team/config/routing.yaml`의 `roles`를 조정해 role별 provider를 바꿔 실행할 수 있습니다.
+
+```bash
+# 관리자 역할은 gemini-cli, 개발자 역할은 claude-cli로 지정
+cat > ai-dev-team/config/routing.yaml <<'EOF'
+provider: codex-cli
+default_workflow: refactor
+roles:
+  manager: gemini-cli
+  planner: codex-cli
+  developer: claude-cli
+  evaluator: codex-cli
+  fixer: codex-cli
+  reviewer: codex-cli
+EOF
+
+node packages/cli/dist/index.js manager refactor "모듈 리팩터링 및 테스트 강화"
+```
+
+CLI 등록된 provider id는 다음을 사용합니다: `codex-cli`, `gemini-cli`, `claude-cli`.
+(호환성 차원에서 `gemini`, `claude`도 내부적으로 허용됩니다.)
 
 ## 관련 문서
 

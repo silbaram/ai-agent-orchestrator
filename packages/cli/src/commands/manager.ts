@@ -105,6 +105,14 @@ export function registerManagerCommand(program: Command, dependencies: ManagerCo
       const request = parseManagerRequest(args);
       await runManagerWorkflow('feature-order-page', request, dependencies);
     });
+
+  manager
+    .command('feature')
+    .description('일반 feature workflow를 실행한다.')
+    .action(async (args) => {
+      const request = parseManagerRequest(args);
+      await runManagerWorkflow('feature', request, dependencies);
+    });
 }
 
 export async function runManagerRefactor(
@@ -201,6 +209,11 @@ export async function runManagerWorkflow(
     }),
     'utf8'
   );
+  const managerMessages = await readManagerMessages(runDir, summary.artifacts);
+  for (const message of managerMessages) {
+    log('[Manager 메시지]');
+    log(message);
+  }
 
   log(`run id: ${runId}`);
   log(`상태: ${summary.state.status}`);
@@ -215,6 +228,24 @@ export async function runManagerWorkflow(
     summary,
     summaryPath
   };
+}
+
+async function readManagerMessages(
+  runDir: string,
+  artifacts: Array<{ phase: string; relativePath: string }>
+): Promise<string[]> {
+  const managerArtifacts = artifacts
+    .filter((artifact) => artifact.relativePath.endsWith('.manager-update.md'))
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+
+  const messages: string[] = [];
+
+  for (const artifact of managerArtifacts) {
+    const text = await readFile(path.resolve(runDir, artifact.relativePath), 'utf8');
+    messages.push(text);
+  }
+
+  return messages;
 }
 
 function parseManagerRequest(args: string[]): string {

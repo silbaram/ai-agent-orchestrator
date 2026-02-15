@@ -513,6 +513,48 @@ function printFinalSummary(result: ManagerRefactorResult): void {
   console.log(`artifacts: ${result.summary.artifacts.length}`);
 }
 
+function printManagerMessages(result: ManagerRefactorResult): Promise<void> {
+  const managerArtifacts = result.summary.artifacts.filter((artifact) =>
+    artifact.relativePath.endsWith('.manager-update.md')
+  );
+
+  if (!managerArtifacts.length) {
+    return Promise.resolve();
+  }
+
+  return readManagerMessages(result.runDir, managerArtifacts).then((messages) => {
+    if (!messages.length) {
+      return;
+    }
+
+    console.log('');
+    console.log('[Manager 메시지]');
+
+    for (const message of messages) {
+      console.log('');
+      console.log(message);
+    }
+  });
+}
+
+async function readManagerMessages(
+  runDir: string,
+  artifacts: ArtifactRecord[]
+): Promise<string[]> {
+  const managerArtifacts = artifacts
+    .filter((artifact) => artifact.relativePath.endsWith('.manager-update.md'))
+    .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
+
+  const messages: string[] = [];
+
+  for (const artifact of managerArtifacts) {
+    const message = await readFile(path.resolve(runDir, artifact.relativePath), 'utf8');
+    messages.push(message);
+  }
+
+  return messages;
+}
+
 async function main(): Promise<void> {
   const args = parseArguments(process.argv.slice(2));
 
@@ -547,6 +589,7 @@ async function main(): Promise<void> {
     app.render();
     await app.dispose();
     printFinalSummary(result);
+    await printManagerMessages(result);
   } catch (error) {
     const message = toErrorMessage(error);
     app.setFailure(message);
