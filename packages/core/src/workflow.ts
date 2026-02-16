@@ -18,6 +18,7 @@ export interface LlmWorkflowPhase extends WorkflowPhaseBase {
   role: string;
   provider?: string;
   systemPromptTemplate?: string;
+  systemPromptFile?: string;
   next?: string;
   decisionSource?: 'output_tag';
   nextOnPass?: string;
@@ -189,6 +190,7 @@ function parsePhaseEntry(entry: Record<string, string>): WorkflowPhase {
     role,
     provider: optionalValue(entry.provider),
     systemPromptTemplate: optionalValue(entry.system_prompt),
+    systemPromptFile: optionalValue(entry.system_prompt_file),
     promptTemplate,
     next: optionalValue(entry.next),
     decisionSource: decisionSourceRaw,

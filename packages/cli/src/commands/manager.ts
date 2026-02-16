@@ -250,7 +250,7 @@ async function readManagerMessages(
 
 function parseManagerRequest(args: string[]): string {
   if (args.length === 0) {
-    throw new Error('요청 문장을 입력해야 합니다. 예: adt manager refactor "함수 분리"');
+    throw new Error('요청 문장을 입력해야 합니다. 예: aao manager refactor "함수 분리"');
   }
 
   for (const arg of args) {
@@ -642,6 +642,11 @@ interface CoreRuntimeModule {
 }
 
 interface ProvidersRuntimeModule {
+  parseRoutingYaml: (yamlText: string) => {
+    provider?: string;
+    roles?: Record<string, string>;
+    defaultWorkflow?: string;
+  };
   createProviderRegistry: () => {
     create(providerId: string): Provider;
   };
@@ -649,6 +654,7 @@ interface ProvidersRuntimeModule {
     providerId?: string;
     routingYaml?: string;
     fallbackProviderId?: string;
+    role?: string;
   }) => string;
 }
 

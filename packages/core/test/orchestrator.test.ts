@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -52,6 +52,27 @@ const WORKFLOW_TEMPLATE = [
   '    provider: mock',
   '    prompt_template: "phase=ask eval={{phase.evaluate.output}}"',
   '    terminal_status: awaiting_input',
+  '  - id: review',
+  '    type: llm',
+  '    role: reviewer',
+  '    provider: mock',
+  '    prompt_template: "phase=review latest={{latest_output}}"',
+  '    terminal_status: completed',
+  ''
+].join('\n');
+
+const SYSTEM_PROMPT_FILE_WORKFLOW_TEMPLATE = [
+  'name: prompt-file-flow',
+  'entry_phase: plan',
+  'max_steps: 8',
+  'phases:',
+  '  - id: plan',
+  '    type: llm',
+  '    role: planner',
+  '    provider: mock',
+  '    system_prompt_file: roles/planner.md',
+  '    prompt_template: "phase=plan request={{request}}"',
+  '    next: review',
   '  - id: review',
   '    type: llm',
   '    role: reviewer',
@@ -299,6 +320,97 @@ test('Orchestrator는 manager phase를 사용자 메시지로만 처리한다.',
   assert.match(managerMessage, /## Risks/);
   assert.match(managerMessage, /## Actions needed/);
   assert.match(managerMessage, /## Next/);
+});
+
+test('Orchestrator는 system_prompt_file을 읽어 phase systemPrompt를 구성한다.', async (t) => {
+  const runDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-system-prompt-file-'));
+  const workspaceDir = await mkdtemp(path.join(tmpdir(), 'adt-orchestrator-system-prompt-file-workspace-'));
+  const workflowPath = path.join(workspaceDir, 'system-prompt-file-flow.yaml');
+  const roleDir = path.join(workspaceDir, 'roles');
+  const recordedSystemPrompts: string[] = [];
+
+  t.after(async () => {
+    await rm(runDir, { recursive: true, force: true });
+    await rm(workspaceDir, { recursive: true, force: true });
+  });
+
+  await mkdir(roleDir, { recursive: true });
+  await writeFile(
+    path.join(roleDir, 'planner.md'),
+    [
+      '# Planner',
+      '',
+      '당신은 {{role}}이다.',
+      '요청: {{request}}',
+      '워크플로: {{workflow.name}}',
+      ''
+    ].join('\n'),
+    'utf8'
+  );
+  await writeFile(workflowPath, SYSTEM_PROMPT_FILE_WORKFLOW_TEMPLATE, 'utf8');
+
+  const provider: Provider = {
+    id: 'mock',
+    capabilities: {
+      systemPromptMode: 'inline',
+      supportsPatchOutput: true
+    },
+    async run(input) {
+      recordedSystemPrompts.push(input.systemPrompt);
+      const phaseId = readPhaseId(input.userPrompt);
+
+      if (phaseId === 'plan') {
+        return {
+          text: 'PLAN OUTPUT',
+          meta: {
+            durationMs: 1,
+            stdout: '',
+            stderr: '',
+            command: ['mock-provider']
+          }
+        };
+      }
+
+      if (phaseId === 'review') {
+        return {
+          text: 'REVIEW OUTPUT',
+          meta: {
+            durationMs: 1,
+            stdout: '',
+            stderr: '',
+            command: ['mock-provider']
+          }
+        };
+      }
+
+      return {
+        text: `UNEXPECTED:${phaseId}`,
+        meta: {
+          durationMs: 1,
+          stdout: '',
+          stderr: '',
+          command: ['mock-provider']
+        }
+      };
+    }
+  };
+
+  const orchestrator = new Orchestrator({
+    providerResolver: () => provider,
+    approvalHandler: async () => true
+  });
+
+  const result = await orchestrator.run({
+    workflowPath,
+    runDir,
+    workspaceDir,
+    request: '테스트 요청'
+  });
+
+  assert.equal(result.state.status, 'completed');
+  assert.equal(recordedSystemPrompts.some((prompt) => prompt.includes('요청: 테스트 요청')), true);
+  assert.equal(recordedSystemPrompts.some((prompt) => prompt.includes('워크플로: prompt-file-flow')), true);
+  assert.equal(recordedSystemPrompts.some((prompt) => prompt.includes('당신은 planner')), true);
 });
 
 test('Orchestrator는 ASK 분기로 전환해 awaiting_input 상태를 기록한다.', async (t) => {

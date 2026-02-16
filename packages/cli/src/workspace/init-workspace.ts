@@ -1,8 +1,27 @@
 import { constants } from 'node:fs';
-import { access, mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const DEFAULT_WORKSPACE_NAME = 'ai-dev-team';
+export const DEFAULT_WORKSPACE_NAME = 'ai-dev-team';
+const TEMPLATE_ROLE_DIRECTORY = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  'templates',
+  'roles'
+);
+const WORKSPACE_ROLE_FILES = [
+  'roles/planner.md',
+  'roles/manager.md',
+  'roles/developer.md',
+  'roles/evaluator.md',
+  'roles/fixer.md',
+  'roles/reviewer.md',
+  'roles/analyzer.md',
+  'roles/documenter.md',
+  'roles/improver.md'
+] as const;
 const WORKSPACE_DIRECTORIES = [
   'artifacts',
   'roles',
@@ -16,12 +35,15 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     'provider: codex-cli',
     'default_workflow: refactor',
     'roles:',
-    '  manager: gemini-cli',
     '  planner: codex-cli',
+    '  manager: gemini-cli',
+    '  analyzer: codex-cli',
+    '  documenter: codex-cli',
     '  developer: claude-cli',
     '  evaluator: codex-cli',
     '  fixer: codex-cli',
     '  reviewer: codex-cli',
+    '  improver: codex-cli',
     ''
   ].join('\n'),
   'config/gatekeeper.yaml': [
@@ -38,34 +60,6 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '    - test',
     ''
   ].join('\n'),
-  'config/tools.yaml': [
-    'commands:',
-    '  - id: git-diff-name-status',
-    '    executable: git',
-    '    args:',
-    '      - diff',
-    '      - --name-status',
-    '    timeout_ms: 15000',
-    '  - id: git-diff-numstat',
-    '    executable: git',
-    '    args:',
-    '      - diff',
-    '      - --numstat',
-    '    timeout_ms: 15000',
-    '  - id: build',
-    '    executable: pnpm',
-    '    args:',
-    '      - -w',
-    '      - build',
-    '    timeout_ms: 180000',
-    '  - id: test',
-    '    executable: pnpm',
-    '    args:',
-    '      - -w',
-    '      - test',
-    '    timeout_ms: 180000',
-    ''
-  ].join('\n'),
   'config/workflows/refactor.yaml': [
     'name: refactor',
     'entry_phase: plan',
@@ -74,13 +68,13 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '  - id: plan',
     '    type: llm',
     '    role: planner',
-    '    system_prompt: "당신은 요청을 실행 계획으로 분해하는 planner다."',
+    '    system_prompt_file: roles/planner.md',
     '    prompt_template: "phase=plan request={{request}}"',
     '    next: manager_plan_report',
     '  - id: manager_plan_report',
     '    type: llm',
     '    role: manager',
-    '    system_prompt: "당신은 AAO의 manager다. 사용자에게 보여줄 메시지를 작성하되 코드 변경은 절대 생성하지 않는다."',
+    '    system_prompt_file: roles/manager.md',
     '    prompt_template: "요청={{request}}|plan={{phase.plan.output}}. 아래 형식으로 사용자 승인 메시지를 작성하세요. # USER_UPDATE\\n## TL;DR\\n## What changed\\n## Risks\\n## Actions needed (Y/n 또는 선택지)\\n## Next"',
     '    next: approve',
     '  - id: approve',
@@ -91,13 +85,13 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '  - id: implement',
     '    type: llm',
     '    role: developer',
-    '    system_prompt: "당신은 승인된 계획을 코드 변경안으로 구현하는 developer다."',
+    '    system_prompt_file: roles/developer.md',
     '    prompt_template: "phase=implement request={{request}} plan={{phase.plan.output}} 반드시 ```diff 코드블록 또는 ### PATCH 섹션으로 patch만 출력하세요."',
     '    next: evaluate',
     '  - id: evaluate',
     '    type: llm',
     '    role: evaluator',
-    '    system_prompt: "당신은 결과 품질을 평가하는 evaluator다."',
+    '    system_prompt_file: roles/evaluator.md',
     '    prompt_template: "phase=evaluate implementation={{phase.implement.output}} DECISION: PASS|FIX|ASK 중 하나를 반드시 포함하세요."',
     '    decision_source: output_tag',
     '    next_on_pass: manager_review_report',
@@ -106,25 +100,25 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '  - id: manager_review_report',
     '    type: llm',
     '    role: manager',
-    '    system_prompt: "당신은 AAO의 manager다. 사용자가 이해할 수 있도록 상태만 전달하고 코드 변경은 생성하지 않는다."',
+    '    system_prompt_file: roles/manager.md',
     '    prompt_template: "요청={{request}} evaluate={{phase.evaluate.output}}. 변경 요약, 다음 액션, 주의점만 정리한 아래 형식으로 사용자 메시지를 작성하세요. # USER_UPDATE\\n## TL;DR\\n## What changed\\n## Risks\\n## Actions needed (Y/n 또는 선택지)\\n## Next"',
     '    next: review',
     '  - id: fix',
     '    type: llm',
     '    role: fixer',
-    '    system_prompt: "당신은 평가 피드백을 반영해 수정하는 fixer다."',
+    '    system_prompt_file: roles/fixer.md',
     '    prompt_template: "phase=fix feedback={{phase.evaluate.output}} request={{request}} 반드시 ```diff 코드블록 또는 ### PATCH 섹션으로 patch만 출력하세요."',
     '    next: review',
     '  - id: ask',
     '    type: llm',
     '    role: planner',
-    '    system_prompt: "당신은 진행에 필요한 추가 정보를 요청하는 planner다."',
+    '    system_prompt_file: roles/planner.md',
     '    prompt_template: "phase=ask feedback={{phase.evaluate.output}} request={{request}}"',
     '    terminal_status: awaiting_input',
     '  - id: review',
     '    type: llm',
     '    role: reviewer',
-    '    system_prompt: "당신은 최종 결과를 요약하는 reviewer다."',
+    '    system_prompt_file: roles/reviewer.md',
     '    prompt_template: "phase=review latest={{latest_output}} request={{request}}"',
     '    terminal_status: completed',
     ''
@@ -138,14 +132,14 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '    type: llm',
     '    role: planner',
     '    provider: codex-cli',
-    '    system_prompt: "당신은 주문 페이지 중심의 기능 개발 plan을 작성하는 planner다."',
+    '    system_prompt_file: roles/planner.md',
     '    prompt_template: "요청={{request}}. 주문 페이지 기능 구현 계획을 작성하고 체크리스트 형태로 정리하세요."',
     '    next: manager_report_plan',
     '  - id: manager_report_plan',
     '    type: llm',
     '    role: manager',
     '    provider: gemini-cli',
-    '    system_prompt: "당신은 AAO의 manager다. 사용자가 승인하기 쉬운 형태로만 요약 메시지를 작성하고 코드 변경은 생성하지 않는다."',
+    '    system_prompt_file: roles/manager.md',
     '    prompt_template: "요청={{request}} plan={{phase.plan.output}}. 아래 형식으로 승인용 메시지를 작성하세요. # USER_UPDATE\\n## TL;DR\\n## What changed\\n## Risks\\n## Actions needed (Y/n 또는 선택지)\\n## Next"',
     '    next: approve',
     '  - id: approve',
@@ -156,14 +150,14 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '    type: llm',
     '    role: developer',
     '    provider: claude-cli',
-    '    system_prompt: "당신은 주문 페이지 기능을 구현하는 developer다."',
+    '    system_prompt_file: roles/developer.md',
     '    prompt_template: "요청={{request}} plan={{phase.plan.output}} 반드시 ```diff 코드블록 또는 ### PATCH 섹션으로 patch만 출력하세요."',
     '    next: evaluate',
     '  - id: evaluate',
     '    type: llm',
     '    role: evaluator',
     '    provider: codex-cli',
-    '    system_prompt: "당신은 구현 결과를 build/test 체크 관점에서 평가하는 evaluator다."',
+    '    system_prompt_file: roles/evaluator.md',
     '    prompt_template: "요청={{request}} implement={{phase.implement.output}} build/test 체크 결과를 반영해 DECISION: PASS|FIX|ASK 중 하나를 반드시 한 줄에 포함하세요."',
     '    decision_source: output_tag',
     '    next_on_pass: manager_report_result',
@@ -174,14 +168,14 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '    type: llm',
     '    role: manager',
     '    provider: gemini-cli',
-    '    system_prompt: "당신은 AAO의 manager다. 구현/평가 결과를 사용자 메시지로 요약하고 코드 변경은 생성하지 않는다."',
+    '    system_prompt_file: roles/manager.md',
     '    prompt_template: "요청={{request}} evaluate={{phase.evaluate.output}}. 아래 형식으로 변경보고서를 작성하세요. # USER_UPDATE\\n## TL;DR\\n## What changed\\n## Risks\\n## Actions needed (Y/n 또는 선택지)\\n## Next"',
     '    next: review',
     '  - id: review',
     '    type: llm',
     '    role: reviewer',
     '    provider: gemini-cli',
-    '    system_prompt: "당신은 최종 결과를 review 관점에서 요약하는 reviewer다."',
+    '    system_prompt_file: roles/reviewer.md',
     '    prompt_template: "요청={{request}} latest={{latest_output}}"',
     '    terminal_status: completed',
     ''
@@ -194,13 +188,13 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '  - id: plan',
     '    type: llm',
     '    role: planner',
-    '    system_prompt: "당신은 주문 페이지 기획/기능 범위를 작성하는 planner다."',
+    '    system_prompt_file: roles/planner.md',
     '    prompt_template: "요청={{request}} 주문 페이지 요구사항을 계획 단계로 분해하세요."',
     '    next: manager_plan_report',
     '  - id: manager_plan_report',
     '    type: llm',
     '    role: manager',
-    '    system_prompt: "당신은 AAO의 manager다. 사용자의 승인 판단에 필요한 메시지 전용 응답을 작성하고 코드 변경은 하지 않는다."',
+    '    system_prompt_file: roles/manager.md',
     '    prompt_template: "요청={{request}} plan={{phase.plan.output}}. 아래 형식으로 승인용 메시지를 작성하세요. # USER_UPDATE\\n## TL;DR\\n## What changed\\n## Risks\\n## Actions needed (Y/n 또는 선택지)\\n## Next"',
     '    next: approve',
     '  - id: approve',
@@ -211,13 +205,13 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '  - id: implement',
     '    type: llm',
     '    role: developer',
-    '    system_prompt: "당신은 주문 페이지 기능을 구현하는 developer다."',
+    '    system_prompt_file: roles/developer.md',
     '    prompt_template: "phase=implement request={{request}} plan={{phase.plan.output}} 반드시 ```diff 코드블록 또는 ### PATCH 섹션으로 patch만 출력하세요."',
     '    next: evaluate',
     '  - id: evaluate',
     '    type: llm',
     '    role: evaluator',
-    '    system_prompt: "당신은 주문 페이지 결과를 테스트 기반으로 평가한다."',
+    '    system_prompt_file: roles/evaluator.md',
     '    prompt_template: "phase=evaluate implementation={{phase.implement.output}} DECISION: PASS|FIX|ASK 중 하나를 반드시 포함하세요."',
     '    decision_source: output_tag',
     '    next_on_pass: manager_review_report',
@@ -226,30 +220,55 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '  - id: manager_review_report',
     '    type: llm',
     '    role: manager',
-    '    system_prompt: "당신은 AAO의 manager다. 결과를 사용자에게 알리는 메시지를 작성하고 코드 변경은 하지 않는다."',
+    '    system_prompt_file: roles/manager.md',
     '    prompt_template: "요청={{request}} evaluate={{phase.evaluate.output}}. 구현/테스트 후 사용자용 보고서를 아래 형식으로 작성하세요. # USER_UPDATE\\n## TL;DR\\n## What changed\\n## Risks\\n## Actions needed (Y/n 또는 선택지)\\n## Next"',
     '    next: review',
     '  - id: fix',
     '    type: llm',
     '    role: fixer',
-    '    system_prompt: "당신은 평가 피드백을 반영해 주문 페이지를 수정하는 fixer다."',
+    '    system_prompt_file: roles/fixer.md',
     '    prompt_template: "phase=fix feedback={{phase.evaluate.output}} request={{request}} 반드시 ```diff 코드블록 또는 ### PATCH 섹션으로 patch만 출력하세요."',
     '    next: review',
     '  - id: ask',
     '    type: llm',
     '    role: planner',
-    '    system_prompt: "당신은 필요한 추가 정보를 요청하는 planner다."',
+    '    system_prompt_file: roles/planner.md',
     '    prompt_template: "phase=ask feedback={{phase.evaluate.output}} request={{request}}"',
     '    terminal_status: awaiting_input',
     '  - id: review',
     '    type: llm',
     '    role: reviewer',
-    '    system_prompt: "당신은 주문 페이지 작업 결과를 요약하는 reviewer다."',
+    '    system_prompt_file: roles/reviewer.md',
     '    prompt_template: "phase=review latest={{latest_output}} request={{request}}"',
     '    terminal_status: completed',
     ''
   ].join('\n')
 };
+
+type BuildTool = 'pnpm' | 'npm' | 'yarn';
+
+interface BuildCommandConfig {
+  executable: string;
+  args: string[];
+}
+
+interface BuildToolConfig {
+  build: BuildCommandConfig;
+  test: BuildCommandConfig;
+}
+
+interface NodeManagerInfo {
+  kind: 'node';
+  manager: BuildTool;
+  pnpmWorkspace?: boolean;
+}
+
+interface GradleManagerInfo {
+  kind: 'gradle';
+  executable: string;
+}
+
+type ProjectManagerInfo = NodeManagerInfo | GradleManagerInfo;
 
 export interface InitWorkspaceOptions {
   baseDir?: string;
@@ -260,6 +279,11 @@ export interface InitWorkspaceOptions {
 export interface InitWorkspaceResult {
   workspacePath: string;
   createdPaths: string[];
+}
+
+export interface ToolsYamlWriteResult {
+  toolsYamlPath: string;
+  toolsYaml: string;
 }
 
 export async function initWorkspace(
@@ -295,7 +319,209 @@ export async function initWorkspace(
     createdPaths.push(filePath);
   }
 
+  const toolsYaml = await generateToolsYaml(baseDir);
+  const toolsYamlPath = path.join(workspacePath, 'config', 'tools.yaml');
+  await writeFile(toolsYamlPath, toolsYaml, 'utf8');
+  createdPaths.push(toolsYamlPath);
+
+  for (const relativeFilePath of WORKSPACE_ROLE_FILES) {
+    const filePath = path.join(workspacePath, relativeFilePath);
+    const finalContent = await getTemplateContent(relativeFilePath);
+    await writeFile(filePath, finalContent, 'utf8');
+    createdPaths.push(filePath);
+  }
+
   return { workspacePath, createdPaths };
+}
+
+export async function regenerateToolsYaml(
+  workspacePath: string,
+  projectRoot = process.cwd()
+): Promise<ToolsYamlWriteResult> {
+  const toolsYaml = await generateToolsYaml(projectRoot);
+  const toolsYamlPath = path.join(workspacePath, 'config', 'tools.yaml');
+  await writeFile(toolsYamlPath, toolsYaml, 'utf8');
+
+  return { toolsYamlPath, toolsYaml };
+}
+
+async function generateToolsYaml(projectRoot: string): Promise<string> {
+  const manager = await detectBuildManager(projectRoot);
+  const config = toBuildToolConfig(manager);
+
+  return [
+    'commands:',
+    '  - id: git-diff-name-status',
+    '    executable: git',
+    '    args:',
+    '      - diff',
+    '      - --name-status',
+    '    timeout_ms: 15000',
+    '  - id: git-diff-numstat',
+    '    executable: git',
+    '    args:',
+    '      - diff',
+    '      - --numstat',
+    '    timeout_ms: 15000',
+    buildCommandYaml('build', config.build),
+    buildCommandYaml('test', config.test),
+    ''
+  ].join('\n');
+}
+
+function buildCommandYaml(id: string, config: BuildCommandConfig): string {
+  return [
+    `  - id: ${id}`,
+    `    executable: ${config.executable}`,
+    '    args:',
+    ...config.args.map((arg) => `      - ${arg}`),
+    '    timeout_ms: 180000'
+  ].join('\n');
+}
+
+async function detectBuildManager(projectRoot: string): Promise<ProjectManagerInfo> {
+  if (await existsAny(projectRoot, ['gradlew', 'gradlew.bat'])) {
+    return {
+      kind: 'gradle',
+      executable: process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
+    };
+  }
+
+  if (await exists(path.join(projectRoot, 'build.gradle')) || await exists(path.join(projectRoot, 'build.gradle.kts'))) {
+    return {
+      kind: 'gradle',
+      executable: 'gradle'
+    };
+  }
+
+  if (await exists(path.join(projectRoot, 'package.json'))) {
+    const manager = await detectNodePackageManager(projectRoot);
+    return {
+      kind: 'node',
+      manager,
+      pnpmWorkspace: manager === 'pnpm' && (await exists(path.join(projectRoot, 'pnpm-workspace.yaml')))
+    };
+  }
+
+  return {
+    kind: 'node',
+    manager: 'pnpm'
+  };
+}
+
+async function detectNodePackageManager(projectRoot: string): Promise<BuildTool> {
+  const declared = await detectNodeManagerFromPackageJson(projectRoot);
+  if (declared) {
+    return declared;
+  }
+
+  if (await exists(path.join(projectRoot, 'pnpm-lock.yaml'))) {
+    return 'pnpm';
+  }
+
+  if (await exists(path.join(projectRoot, 'yarn.lock'))) {
+    return 'yarn';
+  }
+
+  if (await exists(path.join(projectRoot, 'package-lock.json'))) {
+    return 'npm';
+  }
+
+  return 'pnpm';
+}
+
+async function detectNodeManagerFromPackageJson(projectRoot: string): Promise<BuildTool | undefined> {
+  try {
+    const packageJsonPath = path.join(projectRoot, 'package.json');
+    const raw = await readFile(packageJsonPath, 'utf8');
+    const packageJson = JSON.parse(raw) as { packageManager?: string };
+    const packageManager = packageJson.packageManager?.trim();
+
+    if (!packageManager) {
+      return undefined;
+    }
+
+    if (packageManager.startsWith('pnpm@')) {
+      return 'pnpm';
+    }
+
+    if (packageManager.startsWith('yarn@')) {
+      return 'yarn';
+    }
+
+    if (packageManager.startsWith('npm@')) {
+      return 'npm';
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toBuildToolConfig(managerInfo: ProjectManagerInfo): BuildToolConfig {
+  if (managerInfo.kind === 'gradle') {
+    return {
+      build: {
+        executable: managerInfo.executable,
+        args: ['build']
+      },
+      test: {
+        executable: managerInfo.executable,
+        args: ['test']
+      }
+    };
+  }
+
+  if (managerInfo.manager === 'npm') {
+    return {
+      build: {
+        executable: 'npm',
+        args: ['run', 'build']
+      },
+      test: {
+        executable: 'npm',
+        args: ['run', 'test']
+      }
+    };
+  }
+
+  if (managerInfo.manager === 'yarn') {
+    return {
+      build: {
+        executable: 'yarn',
+        args: ['build']
+      },
+      test: {
+        executable: 'yarn',
+        args: ['test']
+      }
+    };
+  }
+
+  const buildArgs = managerInfo.pnpmWorkspace ? ['-w', 'build'] : ['run', 'build'];
+  const testArgs = managerInfo.pnpmWorkspace ? ['-w', 'test'] : ['run', 'test'];
+
+  return {
+    build: {
+      executable: 'pnpm',
+      args: buildArgs
+    },
+    test: {
+      executable: 'pnpm',
+      args: testArgs
+    }
+  };
+}
+
+async function existsAny(baseDir: string, names: string[]): Promise<boolean> {
+  for (const name of names) {
+    if (await exists(path.join(baseDir, name))) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function exists(targetPath: string): Promise<boolean> {
@@ -304,5 +530,23 @@ async function exists(targetPath: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+async function getTemplateContent(
+  relativePath: string
+): Promise<string> {
+  if (!relativePath.startsWith('roles/')) {
+    throw new Error(`지원되지 않는 템플릿 경로입니다: ${relativePath}`);
+  }
+
+  const templateFilePath = path.join(
+    TEMPLATE_ROLE_DIRECTORY,
+    path.basename(relativePath)
+  );
+  try {
+    return await readFile(templateFilePath, 'utf8');
+  } catch {
+    throw new Error(`필수 role 템플릿을 찾을 수 없습니다: ${templateFilePath}`);
   }
 }
