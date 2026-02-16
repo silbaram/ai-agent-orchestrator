@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { Provider, ProviderCapabilities, ProviderRunInput, ProviderRunMeta } from '../../core/src/index.ts';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
-const DEFAULT_CLAUDE_BINARY = 'claude-cli';
+const DEFAULT_CLAUDE_BINARY = 'claude';
 
 export interface ClaudeCliProviderOptions {
   claudeBinary?: string;

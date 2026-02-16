@@ -84,6 +84,16 @@ test('buildGeminiExecCommand는 -p 프롬프트 모드로 통합 입력을 구�
   assert.equal(command.cwd, path.resolve('/tmp/g-root'));
 });
 
+test('buildGeminiExecCommand는 기본 명령이 gemini binary를 사용한다.', () => {
+  const command = buildGeminiExecCommand({
+    systemPrompt: 'sys',
+    userPrompt: 'user',
+    workspaceDir: '/tmp/workspace-root'
+  });
+
+  assert.equal(command.command, 'gemini');
+});
+
 test('buildClaudeExecCommand는 -p 프롬프트 모드로 통합 입력을 구성한다.', () => {
   const command = buildClaudeExecCommand(
     {
@@ -99,6 +109,16 @@ test('buildClaudeExecCommand는 -p 프롬프트 모드로 통합 입력을 구�
   assert.equal(command.command, 'claude-cli-custom');
   assert.deepEqual(command.args, ['-p', '[SYSTEM]\ns\n\n[USER]\nu']);
   assert.equal(command.cwd, path.resolve('/tmp/workspace-root'));
+});
+
+test('buildClaudeExecCommand는 기본 명령이 claude binary를 사용한다.', () => {
+  const command = buildClaudeExecCommand({
+    systemPrompt: 's',
+    userPrompt: 'u',
+    workspaceDir: '/tmp/workspace-root'
+  });
+
+  assert.equal(command.command, 'claude');
 });
 
 test('parseProviderIdFromRoutingYaml은 provider 키를 읽는다.', () => {
@@ -119,6 +139,16 @@ test('registry/factory는 routing 설정으로 provider를 선택한다.', () =>
 
   assert.equal(provider.id, 'codex-cli');
   assert.deepEqual(registry.list(), ['claude', 'claude-cli', 'codex-cli', 'gemini', 'gemini-cli']);
+});
+
+test('resolveProviderId는 별칭을 정규화한다.', () => {
+  const registry = createProviderRegistry();
+  const provider = createProviderFromSelection(registry, {
+    providerId: 'codex'
+  });
+
+  assert.equal(provider.id, 'codex-cli');
+  assert.equal(registry.has('CODEX'), true);
 });
 
 test('resolveProviderId는 fallback을 처리한다.', () => {

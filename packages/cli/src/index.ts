@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { Command } from './commander-shim.ts';
 import { registerInitCommand } from './commands/init.ts';
 import { registerManagerCommand, type ManagerCommandDependencies } from './commands/manager.ts';
+import { registerToolsCommand } from './commands/tools.ts';
 
 export interface CliDependencies {
   manager?: ManagerCommandDependencies;
@@ -21,6 +22,7 @@ export function createCli(dependencies: CliDependencies = {}): Command {
 
   registerInitCommand(program);
   registerManagerCommand(program, dependencies.manager);
+  registerToolsCommand(program);
 
   program
     .command('run')

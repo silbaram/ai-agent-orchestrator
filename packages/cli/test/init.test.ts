@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -98,6 +98,98 @@ test('aao init은 워크스페이스 구조를 생성하고 중복 생성을 막
       },
       /이미 존재합니다/
     );
+  } finally {
+    process.chdir(previousWorkingDirectory);
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('aao init은 package.json 환경에서 npm build/test tools.yaml을 생성한다.', async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-init-package-'));
+  const previousWorkingDirectory = process.cwd();
+
+  try {
+    process.chdir(temporaryDirectory);
+    await writeFile(
+      path.join(temporaryDirectory, 'package.json'),
+      JSON.stringify({ name: 'sample', scripts: { build: 'echo build', test: 'echo test' }), 'utf8'
+    );
+    await writeFile(path.join(temporaryDirectory, 'package-lock.json'), '{}', 'utf8');
+
+    const cli = createCli();
+    await cli.parse(['node', 'aao', 'init']);
+
+    const toolsTemplate = await readFile(
+      path.join(temporaryDirectory, 'ai-dev-team/config/tools.yaml'),
+      'utf8'
+    );
+
+    assert.match(toolsTemplate, /executable:\s+npm/);
+    assert.match(toolsTemplate, /- run/);
+    assert.match(toolsTemplate, /id:\s+build/);
+  } finally {
+    process.chdir(previousWorkingDirectory);
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('aao init은 Gradle 프로젝트에서 gradle build/test tools.yaml을 생성한다.', async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-init-gradle-'));
+  const previousWorkingDirectory = process.cwd();
+
+  try {
+    process.chdir(temporaryDirectory);
+    await writeFile(path.join(temporaryDirectory, 'gradlew'), '#!/bin/sh\necho gradle', 'utf8');
+    await writeFile(path.join(temporaryDirectory, 'build.gradle'), 'plugins {}', 'utf8');
+
+    const cli = createCli();
+    await cli.parse(['node', 'aao', 'init']);
+
+    const toolsTemplate = await readFile(
+      path.join(temporaryDirectory, 'ai-dev-team/config/tools.yaml'),
+      'utf8'
+    );
+    const expectedGradleExecutable =
+      process.platform === 'win32' ? /executable:\s+gradlew\.bat/ : /executable:\s+\.\/gradlew/;
+
+    assert.match(toolsTemplate, expectedGradleExecutable);
+    assert.match(toolsTemplate, /id:\s+build/);
+    assert.match(toolsTemplate, /id:\s+test/);
+  } finally {
+    process.chdir(previousWorkingDirectory);
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
+});
+
+test('aao tools detect는 project 감지 기반으로 tools.yaml을 갱신한다.', async () => {
+  const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'aao-tools-detect-'));
+  const previousWorkingDirectory = process.cwd();
+
+  try {
+    process.chdir(temporaryDirectory);
+    await writeFile(
+      path.join(temporaryDirectory, 'package.json'),
+      JSON.stringify({ name: 'sample', scripts: { build: 'echo build', test: 'echo test' }), 'utf8'
+    );
+    await writeFile(path.join(temporaryDirectory, 'package-lock.json'), '{}', 'utf8');
+
+    const cli = createCli();
+    await cli.parse(['node', 'aao', 'init']);
+
+    const toolsTemplateAfterInit = await readFile(
+      path.join(temporaryDirectory, 'ai-dev-team/config/tools.yaml'),
+      'utf8'
+    );
+    assert.match(toolsTemplateAfterInit, /executable:\s+npm/);
+
+    await writeFile(path.join(temporaryDirectory, 'yarn.lock'), 'yarn.lock', 'utf8');
+    await cli.parse(['node', 'aao', 'tools', 'detect']);
+
+    const toolsTemplateAfterDetect = await readFile(
+      path.join(temporaryDirectory, 'ai-dev-team/config/tools.yaml'),
+      'utf8'
+    );
+    assert.match(toolsTemplateAfterDetect, /executable:\s+yarn/);
   } finally {
     process.chdir(previousWorkingDirectory);
     await rm(temporaryDirectory, { recursive: true, force: true });

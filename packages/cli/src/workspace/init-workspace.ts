@@ -3,7 +3,7 @@ import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DEFAULT_WORKSPACE_NAME = 'ai-dev-team';
+export const DEFAULT_WORKSPACE_NAME = 'ai-dev-team';
 const TEMPLATE_ROLE_DIRECTORY = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -58,34 +58,6 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     '  command_ids:',
     '    - build',
     '    - test',
-    ''
-  ].join('\n'),
-  'config/tools.yaml': [
-    'commands:',
-    '  - id: git-diff-name-status',
-    '    executable: git',
-    '    args:',
-    '      - diff',
-    '      - --name-status',
-    '    timeout_ms: 15000',
-    '  - id: git-diff-numstat',
-    '    executable: git',
-    '    args:',
-    '      - diff',
-    '      - --numstat',
-    '    timeout_ms: 15000',
-    '  - id: build',
-    '    executable: pnpm',
-    '    args:',
-    '      - -w',
-    '      - build',
-    '    timeout_ms: 180000',
-    '  - id: test',
-    '    executable: pnpm',
-    '    args:',
-    '      - -w',
-    '      - test',
-    '    timeout_ms: 180000',
     ''
   ].join('\n'),
   'config/workflows/refactor.yaml': [
@@ -273,6 +245,31 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
   ].join('\n')
 };
 
+type BuildTool = 'pnpm' | 'npm' | 'yarn';
+
+interface BuildCommandConfig {
+  executable: string;
+  args: string[];
+}
+
+interface BuildToolConfig {
+  build: BuildCommandConfig;
+  test: BuildCommandConfig;
+}
+
+interface NodeManagerInfo {
+  kind: 'node';
+  manager: BuildTool;
+  pnpmWorkspace?: boolean;
+}
+
+interface GradleManagerInfo {
+  kind: 'gradle';
+  executable: string;
+}
+
+type ProjectManagerInfo = NodeManagerInfo | GradleManagerInfo;
+
 export interface InitWorkspaceOptions {
   baseDir?: string;
   workspaceName?: string;
@@ -282,6 +279,11 @@ export interface InitWorkspaceOptions {
 export interface InitWorkspaceResult {
   workspacePath: string;
   createdPaths: string[];
+}
+
+export interface ToolsYamlWriteResult {
+  toolsYamlPath: string;
+  toolsYaml: string;
 }
 
 export async function initWorkspace(
@@ -317,6 +319,11 @@ export async function initWorkspace(
     createdPaths.push(filePath);
   }
 
+  const toolsYaml = await generateToolsYaml(baseDir);
+  const toolsYamlPath = path.join(workspacePath, 'config', 'tools.yaml');
+  await writeFile(toolsYamlPath, toolsYaml, 'utf8');
+  createdPaths.push(toolsYamlPath);
+
   for (const relativeFilePath of WORKSPACE_ROLE_FILES) {
     const filePath = path.join(workspacePath, relativeFilePath);
     const finalContent = await getTemplateContent(relativeFilePath);
@@ -325,6 +332,196 @@ export async function initWorkspace(
   }
 
   return { workspacePath, createdPaths };
+}
+
+export async function regenerateToolsYaml(
+  workspacePath: string,
+  projectRoot = process.cwd()
+): Promise<ToolsYamlWriteResult> {
+  const toolsYaml = await generateToolsYaml(projectRoot);
+  const toolsYamlPath = path.join(workspacePath, 'config', 'tools.yaml');
+  await writeFile(toolsYamlPath, toolsYaml, 'utf8');
+
+  return { toolsYamlPath, toolsYaml };
+}
+
+async function generateToolsYaml(projectRoot: string): Promise<string> {
+  const manager = await detectBuildManager(projectRoot);
+  const config = toBuildToolConfig(manager);
+
+  return [
+    'commands:',
+    '  - id: git-diff-name-status',
+    '    executable: git',
+    '    args:',
+    '      - diff',
+    '      - --name-status',
+    '    timeout_ms: 15000',
+    '  - id: git-diff-numstat',
+    '    executable: git',
+    '    args:',
+    '      - diff',
+    '      - --numstat',
+    '    timeout_ms: 15000',
+    buildCommandYaml('build', config.build),
+    buildCommandYaml('test', config.test),
+    ''
+  ].join('\n');
+}
+
+function buildCommandYaml(id: string, config: BuildCommandConfig): string {
+  return [
+    `  - id: ${id}`,
+    `    executable: ${config.executable}`,
+    '    args:',
+    ...config.args.map((arg) => `      - ${arg}`),
+    '    timeout_ms: 180000'
+  ].join('\n');
+}
+
+async function detectBuildManager(projectRoot: string): Promise<ProjectManagerInfo> {
+  if (await existsAny(projectRoot, ['gradlew', 'gradlew.bat'])) {
+    return {
+      kind: 'gradle',
+      executable: process.platform === 'win32' ? 'gradlew.bat' : './gradlew'
+    };
+  }
+
+  if (await exists(path.join(projectRoot, 'build.gradle')) || await exists(path.join(projectRoot, 'build.gradle.kts'))) {
+    return {
+      kind: 'gradle',
+      executable: 'gradle'
+    };
+  }
+
+  if (await exists(path.join(projectRoot, 'package.json'))) {
+    const manager = await detectNodePackageManager(projectRoot);
+    return {
+      kind: 'node',
+      manager,
+      pnpmWorkspace: manager === 'pnpm' && (await exists(path.join(projectRoot, 'pnpm-workspace.yaml')))
+    };
+  }
+
+  return {
+    kind: 'node',
+    manager: 'pnpm'
+  };
+}
+
+async function detectNodePackageManager(projectRoot: string): Promise<BuildTool> {
+  const declared = await detectNodeManagerFromPackageJson(projectRoot);
+  if (declared) {
+    return declared;
+  }
+
+  if (await exists(path.join(projectRoot, 'pnpm-lock.yaml'))) {
+    return 'pnpm';
+  }
+
+  if (await exists(path.join(projectRoot, 'yarn.lock'))) {
+    return 'yarn';
+  }
+
+  if (await exists(path.join(projectRoot, 'package-lock.json'))) {
+    return 'npm';
+  }
+
+  return 'pnpm';
+}
+
+async function detectNodeManagerFromPackageJson(projectRoot: string): Promise<BuildTool | undefined> {
+  try {
+    const packageJsonPath = path.join(projectRoot, 'package.json');
+    const raw = await readFile(packageJsonPath, 'utf8');
+    const packageJson = JSON.parse(raw) as { packageManager?: string };
+    const packageManager = packageJson.packageManager?.trim();
+
+    if (!packageManager) {
+      return undefined;
+    }
+
+    if (packageManager.startsWith('pnpm@')) {
+      return 'pnpm';
+    }
+
+    if (packageManager.startsWith('yarn@')) {
+      return 'yarn';
+    }
+
+    if (packageManager.startsWith('npm@')) {
+      return 'npm';
+    }
+
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toBuildToolConfig(managerInfo: ProjectManagerInfo): BuildToolConfig {
+  if (managerInfo.kind === 'gradle') {
+    return {
+      build: {
+        executable: managerInfo.executable,
+        args: ['build']
+      },
+      test: {
+        executable: managerInfo.executable,
+        args: ['test']
+      }
+    };
+  }
+
+  if (managerInfo.manager === 'npm') {
+    return {
+      build: {
+        executable: 'npm',
+        args: ['run', 'build']
+      },
+      test: {
+        executable: 'npm',
+        args: ['run', 'test']
+      }
+    };
+  }
+
+  if (managerInfo.manager === 'yarn') {
+    return {
+      build: {
+        executable: 'yarn',
+        args: ['build']
+      },
+      test: {
+        executable: 'yarn',
+        args: ['test']
+      }
+    };
+  }
+
+  const buildArgs = managerInfo.pnpmWorkspace ? ['-w', 'build'] : ['run', 'build'];
+  const testArgs = managerInfo.pnpmWorkspace ? ['-w', 'test'] : ['run', 'test'];
+
+  return {
+    build: {
+      executable: 'pnpm',
+      args: buildArgs
+    },
+    test: {
+      executable: 'pnpm',
+      args: testArgs
+    }
+  };
+}
+
+async function existsAny(baseDir: string, names: string[]): Promise<boolean> {
+  for (const name of names) {
+    if (await exists(path.join(baseDir, name))) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 async function exists(targetPath: string): Promise<boolean> {

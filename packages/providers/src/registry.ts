@@ -23,19 +23,38 @@ export interface ProviderSelectionOptions {
   role?: string;
 }
 
+function normalizeProviderId(providerId: string): string {
+  const normalized = providerId.trim().toLowerCase();
+
+  if (normalized === 'codex') {
+    return 'codex-cli';
+  }
+
+  if (normalized === 'gemini' || normalized === 'gemini-cli') {
+    return 'gemini-cli';
+  }
+
+  if (normalized === 'claude' || normalized === 'claude-cli') {
+    return 'claude-cli';
+  }
+
+  return normalized;
+}
+
 export class ProviderRegistry {
   private readonly factories = new Map<string, ProviderFactory>();
 
   register(providerId: string, factory: ProviderFactory): void {
-    this.factories.set(providerId, factory);
+    const normalizedProviderId = normalizeProviderId(providerId);
+    this.factories.set(normalizedProviderId, factory);
   }
 
   has(providerId: string): boolean {
-    return this.factories.has(providerId);
+    return this.factories.has(normalizeProviderId(providerId));
   }
 
   create(providerId: string): Provider {
-    const normalizedProviderId = providerId.trim().toLowerCase();
+    const normalizedProviderId = normalizeProviderId(providerId);
     const factory = this.factories.get(normalizedProviderId);
 
     if (!factory) {
@@ -56,6 +75,7 @@ export function createProviderRegistry(
   const registry = new ProviderRegistry();
 
   registry.register('codex-cli', () => new CodexCliProvider(options.codexCli));
+  registry.register('codex', () => new CodexCliProvider(options.codexCli));
   registry.register('claude', () => new ClaudeCliProvider(options.claudeCli));
   registry.register('claude-cli', () => new ClaudeCliProvider(options.claudeCli));
   registry.register('gemini', () => new GeminiCliProvider(options.geminiCli));
@@ -68,7 +88,7 @@ export function resolveProviderId(options: ProviderSelectionOptions = {}): strin
   const explicitProviderId = options.providerId?.trim();
 
   if (explicitProviderId) {
-    return explicitProviderId;
+    return normalizeProviderId(explicitProviderId);
   }
 
   if (options.role && options.routingYaml) {
@@ -79,7 +99,7 @@ export function resolveProviderId(options: ProviderSelectionOptions = {}): strin
     );
 
     if (roleProviderId) {
-      return roleProviderId.trim().toLowerCase();
+      return normalizeProviderId(roleProviderId);
     }
   }
 
@@ -87,11 +107,11 @@ export function resolveProviderId(options: ProviderSelectionOptions = {}): strin
     const providerId = parseProviderIdFromRoutingYaml(options.routingYaml);
 
     if (providerId) {
-      return providerId.trim().toLowerCase();
+      return normalizeProviderId(providerId);
     }
   }
 
-  return options.fallbackProviderId?.trim().toLowerCase() ?? 'codex-cli';
+  return options.fallbackProviderId ? normalizeProviderId(options.fallbackProviderId) : 'codex-cli';
 }
 
 export function createProviderFromSelection(
