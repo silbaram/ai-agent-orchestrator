@@ -642,6 +642,11 @@ interface CoreRuntimeModule {
 }
 
 interface ProvidersRuntimeModule {
+  parseRoutingYaml: (yamlText: string) => {
+    provider?: string;
+    roles?: Record<string, string>;
+    defaultWorkflow?: string;
+  };
   createProviderRegistry: () => {
     create(providerId: string): Provider;
   };
@@ -649,6 +654,7 @@ interface ProvidersRuntimeModule {
     providerId?: string;
     routingYaml?: string;
     fallbackProviderId?: string;
+    role?: string;
   }) => string;
 }
 

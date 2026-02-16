@@ -3,7 +3,10 @@ import type { Provider } from '../../core/src/index.ts';
 import { ClaudeCliProvider, type ClaudeCliProviderOptions } from './claude-cli-provider.ts';
 import { CodexCliProvider, type CodexCliProviderOptions } from './codex-cli-provider.ts';
 import { GeminiCliProvider, type GeminiCliProviderOptions } from './gemini-cli-provider.ts';
-import { parseProviderIdFromRoutingYaml } from './routing.ts';
+import {
+  parseProviderIdFromRoutingYaml,
+  resolveProviderForRoleFromRoutingYaml
+} from './routing.ts';
 
 export type ProviderFactory = () => Provider;
 
@@ -17,6 +20,7 @@ export interface ProviderSelectionOptions {
   providerId?: string;
   routingYaml?: string;
   fallbackProviderId?: string;
+  role?: string;
 }
 
 export class ProviderRegistry {
@@ -31,7 +35,8 @@ export class ProviderRegistry {
   }
 
   create(providerId: string): Provider {
-    const factory = this.factories.get(providerId);
+    const normalizedProviderId = providerId.trim().toLowerCase();
+    const factory = this.factories.get(normalizedProviderId);
 
     if (!factory) {
       throw new Error(`등록되지 않은 provider입니다: ${providerId}`);
@@ -66,15 +71,27 @@ export function resolveProviderId(options: ProviderSelectionOptions = {}): strin
     return explicitProviderId;
   }
 
+  if (options.role && options.routingYaml) {
+    const roleProviderId = resolveProviderForRoleFromRoutingYaml(
+      options.routingYaml,
+      options.role,
+      options.fallbackProviderId
+    );
+
+    if (roleProviderId) {
+      return roleProviderId.trim().toLowerCase();
+    }
+  }
+
   if (options.routingYaml) {
     const providerId = parseProviderIdFromRoutingYaml(options.routingYaml);
 
     if (providerId) {
-      return providerId;
+      return providerId.trim().toLowerCase();
     }
   }
 
-  return options.fallbackProviderId ?? 'codex-cli';
+  return options.fallbackProviderId?.trim().toLowerCase() ?? 'codex-cli';
 }
 
 export function createProviderFromSelection(

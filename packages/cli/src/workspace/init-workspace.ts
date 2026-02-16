@@ -35,12 +35,15 @@ const WORKSPACE_TEMPLATES: Record<string, string> = {
     'provider: codex-cli',
     'default_workflow: refactor',
     'roles:',
-    '  manager: gemini-cli',
     '  planner: codex-cli',
+    '  manager: gemini-cli',
+    '  analyzer: codex-cli',
+    '  documenter: codex-cli',
     '  developer: claude-cli',
     '  evaluator: codex-cli',
     '  fixer: codex-cli',
     '  reviewer: codex-cli',
+    '  improver: codex-cli',
     ''
   ].join('\n'),
   'config/gatekeeper.yaml': [

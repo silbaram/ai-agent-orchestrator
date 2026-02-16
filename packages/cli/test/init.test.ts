@@ -81,6 +81,10 @@ test('aao init은 워크스페이스 구조를 생성하고 중복 생성을 막
     assert.match(routingTemplate, /manager:\s+gemini/);
     assert.match(routingTemplate, /planner:\s+codex-cli/);
     assert.match(routingTemplate, /developer:\s+claude/);
+    assert.match(routingTemplate, /analyzer:\s+codex-cli/);
+    assert.match(routingTemplate, /documenter:\s+codex-cli/);
+    assert.match(routingTemplate, /improver:\s+codex-cli/);
+    assert.match(routingTemplate, /reviewer:\s+codex-cli/);
 
     const toolsTemplate = await readFile(
       path.join(temporaryDirectory, 'ai-dev-team/config/tools.yaml'),

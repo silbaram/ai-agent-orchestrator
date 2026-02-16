@@ -130,6 +130,30 @@ test('resolveProviderId는 fallback을 처리한다.', () => {
   assert.equal(providerId, 'codex-cli');
 });
 
+test('resolveProviderId는 role 매핑이 있으면 그 provider를 선택한다.', () => {
+  const providerId = resolveProviderId({
+    routingYaml: [
+      'provider: codex-cli',
+      'roles:',
+      '  planner: gemini-cli',
+      '  developer: claude-cli'
+    ].join('\n'),
+    role: 'developer'
+  });
+
+  assert.equal(providerId, 'claude-cli');
+});
+
+test('resolveProviderId는 role 매핑이 없으면 global provider로 폴백한다.', () => {
+  const providerId = resolveProviderId({
+    routingYaml: ['provider: gemini-cli', 'roles:', '  planner: claude-cli'].join('\n'),
+    role: 'analyzer',
+    fallbackProviderId: 'codex-cli'
+  });
+
+  assert.equal(providerId, 'gemini-cli');
+});
+
 test('parseRoutingYaml는 roles 및 default_workflow를 파싱한다.', () => {
   const config = parseRoutingYaml(
     [
